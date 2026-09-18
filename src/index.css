@@ -1,0 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-primary: #087B8C;
+  --color-primary-dark: #031A36;
+  --color-primary-mid: #074C63;
+  --color-bg: #F7FAFC;
+  --color-blue-light: #B7C8D8;
+  --color-cyan: #6CC7D3;
+  --color-gray-light: #B7C8D8;
+  --color-navy: #031A36;
+  --color-teal: #1A9AAA;
+  --color-teal-mid: #087B8C;
+  --color-ink-blue: #062847;
+  --color-deep-teal: #074C63;
+  --color-alert: #FF315F;
+  --color-success: #16C784;
+  --color-warm: #FFC247;
+  --color-surface-soft: #E8F4F6;
+  --color-ink-soft: #123B5A;
+  --color-teal-bright: #1C8791;
+  --color-primary-hover: #057080;
+  --color-border: #C0D2DE;
+
+  --font-display: 'Manrope', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #FBFBFD;
+  color: #021734;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide scrollbars by default */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #C0D2DE;
+  border-radius: 2px;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Animated counter */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Progress bar animation */
+@keyframes progressFill {
+  from { width: 0%; }
+}
+
+@keyframes statsMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.stats-marquee .marquee-track {
+  animation: statsMarquee 6s linear infinite;
+  will-change: transform;
+}
+
+/* Landing page visual system */
+.landing-page {
+  color: #031A36;
+  background-color: #F7FAFC !important;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.landing-hero {
+  position: sticky;
+  top: 4rem;
+  min-height: calc(100dvh - 4rem);
+  background-color: #031A36;
+  background-image:
+    linear-gradient(rgba(108, 199, 211, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(108, 199, 211, 0.08) 1px, transparent 1px),
+    linear-gradient(135deg, #031A36 0%, #062847 38%, #074C63 68%, #1A9AAA 100%);
+  background-size: 52px 52px, 52px 52px, auto;
+  background-position: 0 0, 0 0, center;
+  box-shadow: 0 18px 50px rgba(3, 26, 54, 0.18);
+}
+
+@keyframes networkFloat {
+  0%, 100% { transform: scale(1.15) translateY(0); }
+  50% { transform: scale(1.15) translateY(-10px); }
+}
+
+.animate-network-float {
+  animation: networkFloat 3.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Keep the existing section markup, but move its legacy tokens onto the new palette. */
+.landing-page [class~="bg-[#FBFBFD]"] { background-color: #F7FAFC !important; }
+.landing-page [class~="bg-[#021734]"] { background-color: #031A36 !important; }
+.landing-page [class~="bg-[#036D7D]"] { background-color: #087B8C !important; }
+.landing-page [class~="bg-[#F0F6F8]"] { background-color: #EAF4F6 !important; }
+.landing-page [class~="text-[#021734]"] { color: #031A36 !important; }
+.landing-page [class~="text-[#036D7D]"] { color: #087B8C !important; }
+.landing-page [class~="text-[#79C3D0]"] { color: #6CC7D3 !important; }
+.landing-page [class~="border-[#C0D2DE]"] { border-color: #B7C8D8 !important; }
+.landing-page [class~="border-[#C0D2DE]/40"] { border-color: rgba(183, 200, 216, 0.4) !important; }
+.landing-page [class~="border-[#C0D2DE]/60"] { border-color: rgba(183, 200, 216, 0.6) !important; }
+.landing-page [class~="bg-[#036D7D]/10"] { background-color: rgba(8, 123, 140, 0.1) !important; }
+.landing-page [class~="text-[#036D7D]/60"] { color: rgba(8, 123, 140, 0.6) !important; }

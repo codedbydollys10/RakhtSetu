@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Notification Sounds</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #e11d48;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #e11d48;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            background: #be123c;
+        }
+        .info {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border-left: 4px solid #f59e0b;
+        }
+        .success {
+            background: #d1fae5;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border-left: 4px solid #10b981;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Generate Notification Sounds</h1>
+        <p>Click the buttons below to generate and download the notification sound files for your blood donation app.</p>
+        
+        <div style="margin: 30px 0;">
+            <button onclick="generateAndDownload('notification', 800, 0.3)">
+                Generate notification.mp3 (Gentle Beep)
+            </button>
+            <button onclick="generateAndDownload('urgent', 600, 0.4)">
+                Generate urgent.mp3 (Alert Sound)
+            </button>
+        </div>
+
+        <div class="info">
+            <strong>📌 Instructions:</strong>
+            <ol>
+                <li>Click each button to generate and download the sound files</li>
+                <li>The files will download automatically</li>
+                <li>Move the downloaded files to: <code>public/sounds/</code></li>
+                <li>Refresh your app to use the new sounds</li>
+            </ol>
+        </div>
+
+        <div class="success" id="success">
+            <strong>✅ Success!</strong> Sound file generated and downloaded. Check your Downloads folder.
+        </div>
+    </div>
+
+    <script>
+        async function generateAndDownload(type, frequency, volume) {
+            // Create audio context
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const sampleRate = audioContext.sampleRate;
+            
+            // Duration in seconds
+            const duration = type === 'urgent' ? 0.5 : 0.4;
+            const numSamples = sampleRate * duration;
+            
+            // Create audio buffer
+            const audioBuffer = audioContext.createBuffer(1, numSamples, sampleRate);
+            const channelData = audioBuffer.getChannelData(0);
+            
+            // Generate sound wave
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                
+                if (type === 'urgent') {
+                    // Urgent: Two quick beeps
+                    const beep1 = t < 0.15 ? Math.sin(2 * Math.PI * frequency * t) : 0;
+                    const beep2 = (t > 0.2 && t < 0.35) ? Math.sin(2 * Math.PI * frequency * t) : 0;
+                    const envelope = Math.max(0, 1 - (t / duration));
+                    channelData[i] = (beep1 + beep2) * volume * envelope;
+                } else {
+                    // Notification: Single gentle beep
+                    const wave = Math.sin(2 * Math.PI * frequency * t);
+                    const envelope = Math.sin(Math.PI * t / duration); // Smooth fade in/out
+                    channelData[i] = wave * volume * envelope;
+                }
+            }
+            
+            // Convert to WAV (MP3 encoding requires external library, WAV works fine)
+            const wavData = audioBufferToWav(audioBuffer);
+            const blob = new Blob([wavData], { type: 'audio/wav' });
+            
+            // Download
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${type}.wav`; // Using WAV instead of MP3 (works perfectly for notifications)
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            // Show success message
+            document.getElementById('success').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('success').style.display = 'none';
+            }, 3000);
+        }
+        
+        // Convert AudioBuffer to WAV format
+        function audioBufferToWav(buffer) {
+            const length = buffer.length * buffer.numberOfChannels * 2 + 44;
+            const arrayBuffer = new ArrayBuffer(length);
+            const view = new DataView(arrayBuffer);
+            const channels = [];
+            let offset = 0;
+            let pos = 0;
+            
+            // Write WAV header
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+            
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16); // length = 16
+            setUint16(1); // PCM (uncompressed)
+            setUint16(buffer.numberOfChannels);
+            setUint32(buffer.sampleRate);
+            setUint32(buffer.sampleRate * 2 * buffer.numberOfChannels); // avg. bytes/sec
+            setUint16(buffer.numberOfChannels * 2); // block-align
+            setUint16(16); // 16-bit
+            
+            setUint32(0x61746164); // "data" - chunk
+            setUint32(length - pos - 4); // chunk length
+            
+            // Write interleaved data
+            for (let i = 0; i < buffer.numberOfChannels; i++) {
+                channels.push(buffer.getChannelData(i));
+            }
+            
+            while (pos < length) {
+                for (let i = 0; i < buffer.numberOfChannels; i++) {
+                    const sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    view.setInt16(pos, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            
+            return arrayBuffer;
+            
+            function setUint16(data) {
+                view.setUint16(pos, data, true);
+                pos += 2;
+            }
+            
+            function setUint32(data) {
+                view.setUint32(pos, data, true);
+                pos += 4;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Message Sounds</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+        .sound-card {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .sound-card h3 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .icon {
+            font-size: 24px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .play-btn {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        .download-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+        }
+        .success { color: #38ef7d; }
+        .info-text { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔊 Message Sound Generator</h1>
+        <p class="subtitle">Generate shuttle sounds for your messaging app</p>
+
+        <!-- Send Sound -->
+        <div class="sound-card">
+            <h3><span class="icon">📤</span> Message Send Sound</h3>
+            <p class="info-text">A quick, upward "whoosh" sound for when messages are sent</p>
+            <div class="controls">
+                <button class="play-btn" onclick="playSound('send')">▶️ Play</button>
+                <button class="download-btn" onclick="generateAndDownload('send')">⬇️ Download</button>
+            </div>
+            <div class="info">
+                <strong>Sound Profile:</strong><br>
+                • Frequency: 600Hz → 1200Hz (rising)<br>
+                • Duration: 150ms<br>
+                • Style: Quick ascending swoosh
+            </div>
+        </div>
+
+        <!-- Receive Sound -->
+        <div class="sound-card">
+            <h3><span class="icon">📥</span> Message Receive Sound</h3>
+            <p class="info-text">A gentle, descending "plop" sound for incoming messages</p>
+            <div class="controls">
+                <button class="play-btn" onclick="playSound('receive')">▶️ Play</button>
+                <button class="download-btn" onclick="generateAndDownload('receive')">⬇️ Download</button>
+            </div>
+            <div class="info">
+                <strong>Sound Profile:</strong><br>
+                • Frequency: 800Hz → 400Hz (falling)<br>
+                • Duration: 200ms<br>
+                • Style: Gentle descending tone
+            </div>
+        </div>
+
+        <div class="status" id="status">
+            Click the buttons above to preview or download sounds
+        </div>
+    </div>
+
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        function createSendSound() {
+            const duration = 0.15; // 150ms
+            const sampleRate = audioContext.sampleRate;
+            const numSamples = duration * sampleRate;
+            const buffer = audioContext.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
+
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                const progress = i / numSamples;
+                
+                // Rising frequency from 600Hz to 1200Hz
+                const frequency = 600 + (600 * progress);
+                
+                // Envelope: quick attack, sustained, quick release
+                let envelope = 1;
+                if (progress < 0.1) {
+                    envelope = progress / 0.1;
+                } else if (progress > 0.85) {
+                    envelope = 1 - ((progress - 0.85) / 0.15);
+                }
+                
+                // Generate sine wave with frequency sweep
+                data[i] = Math.sin(2 * Math.PI * frequency * t) * envelope * 0.3;
+            }
+
+            return buffer;
+        }
+
+        function createReceiveSound() {
+            const duration = 0.2; // 200ms
+            const sampleRate = audioContext.sampleRate;
+            const numSamples = duration * sampleRate;
+            const buffer = audioContext.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
+
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                const progress = i / numSamples;
+                
+                // Falling frequency from 800Hz to 400Hz
+                const frequency = 800 - (400 * progress);
+                
+                // Envelope: moderate attack, decay
+                let envelope = 1;
+                if (progress < 0.15) {
+                    envelope = progress / 0.15;
+                } else {
+                    envelope = 1 - ((progress - 0.15) / 0.85);
+                }
+                
+                // Generate sine wave with frequency sweep
+                data[i] = Math.sin(2 * Math.PI * frequency * t) * envelope * 0.25;
+            }
+
+            return buffer;
+        }
+
+        function playSound(type) {
+            const buffer = type === 'send' ? createSendSound() : createReceiveSound();
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start();
+
+            const status = document.getElementById('status');
+            status.innerHTML = `<span class="success">✓</span> Playing ${type} sound...`;
+        }
+
+        function audioBufferToWav(buffer) {
+            const numChannels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const format = 1; // PCM
+            const bitDepth = 16;
+
+            const bytesPerSample = bitDepth / 8;
+            const blockAlign = numChannels * bytesPerSample;
+
+            const data = [];
+            for (let i = 0; i < buffer.length; i++) {
+                for (let channel = 0; channel < numChannels; channel++) {
+                    const sample = buffer.getChannelData(channel)[i];
+                    const int16 = Math.max(-1, Math.min(1, sample)) * 0x7FFF;
+                    data.push(int16 & 0xFF);
+                    data.push((int16 >> 8) & 0xFF);
+                }
+            }
+
+            const dataLength = data.length;
+            const bufferLength = 44 + dataLength;
+            const view = new DataView(new ArrayBuffer(bufferLength));
+
+            // RIFF chunk descriptor
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataLength, true);
+            writeString(view, 8, 'WAVE');
+
+            // fmt sub-chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, format, true);
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * blockAlign, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bitDepth, true);
+
+            // data sub-chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataLength, true);
+
+            for (let i = 0; i < data.length; i++) {
+                view.setUint8(44 + i, data[i]);
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        function generateAndDownload(type) {
+            const buffer = type === 'send' ? createSendSound() : createReceiveSound();
+            const wav = audioBufferToWav(buffer);
+            const url = URL.createObjectURL(wav);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `message-${type}.wav`;
+            a.click();
+            
+            URL.revokeObjectURL(url);
+
+            const status = document.getElementById('status');
+            status.innerHTML = `<span class="success">✓</span> Downloaded message-${type}.wav successfully!`;
+        }
+    </script>
+</body>
+</html>
