@@ -9,8 +9,8 @@ import { useApp } from "../../context/AppContext";
 import { type BloodGroup, type Urgency } from "../../data/mockData";
 
 export default function HospitalRequests() {
-  const { requests, createRequest, updateRequestStatus } = useApp();
-  const myRequests = requests.filter((r) => r.hospitalId === "h1");
+  const { requests, createRequest, updateRequestStatus, currentUser } = useApp();
+  const myRequests = requests.filter((r) => r.hospitalId === currentUser?.id);
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "fulfilled">("all");
@@ -32,7 +32,7 @@ export default function HospitalRequests() {
     e.preventDefault();
     setSubmitting(true);
     setTimeout(() => {
-      createRequest({ ...form, hospitalId: "h1", hospitalName: "CityCare Hospital" });
+      createRequest({ ...form, hospitalId: currentUser?.id ?? "", hospitalName: currentUser?.name ?? "Hospital" });
       setSubmitting(false);
       setSuccess(true);
       setTimeout(() => { setSuccess(false); setShowCreate(false); }, 2000);

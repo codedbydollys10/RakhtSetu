@@ -5,8 +5,22 @@ import Badge from "../../components/ui/Badge";
 import { useApp } from "../../context/AppContext";
 
 export default function DonorProfile() {
-  const { donors } = useApp();
-  const me = donors.find((d) => d.id === "d1")!;
+  const { donors, currentUser, donorAvailability } = useApp();
+  const me = donors.find((d) => d.id === currentUser?.id) ?? (currentUser ? {
+    id: currentUser.id,
+    name: currentUser.name,
+    bloodGroup: "Not available",
+    area: "Not available",
+    city: "",
+    status: "Inactive" as const,
+    available: false,
+    lastDonation: "Not available",
+    donationsCount: 0,
+    phone: "",
+    matchScore: 0,
+  } : null);
+  if (!me) return null;
+  const available = donorAvailability ?? me.available;
   return (
     <DashboardLayout>
       <PageHeader title="My Profile" />
@@ -18,20 +32,20 @@ export default function DonorProfile() {
             </div>
             <div>
               <h2 className="text-xl font-display font-bold text-[#021734]">{me.name}</h2>
-              <p className="text-sm text-[#021734]/50">{me.area}, {me.city}</p>
+              <p className="text-sm text-[#021734]/50">{me.area}{me.city ? `, ${me.city}` : ""}</p>
               <div className="mt-1.5">
-                <Badge variant={me.available ? "active" : "unavailable"} label={me.available ? "Available" : "Unavailable"} />
+                <Badge variant={available ? "active" : "unavailable"} label={available ? "Available" : "Unavailable"} />
               </div>
             </div>
           </div>
           <div className="space-y-3 text-sm">
             {[
               { label: "Blood Group", value: me.bloodGroup },
-              { label: "Area", value: `${me.area}, ${me.city}` },
+              { label: "Area", value: `${me.area}${me.city ? `, ${me.city}` : ""}` },
               { label: "Total Donations", value: me.donationsCount.toString() },
-              { label: "Last Donation", value: "15 June 2026" },
+              { label: "Last Donation", value: me.lastDonation },
               { label: "Coordination Score", value: `${me.matchScore}% (not medical eligibility)` },
-              { label: "Member Since", value: "January 2023" },
+              { label: "Member Since", value: "Not available" },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between py-2.5 border-b border-[#C0D2DE]/40 last:border-0">
                 <span className="text-[#021734]/50">{label}</span>

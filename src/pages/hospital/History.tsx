@@ -5,8 +5,8 @@ import { useApp } from "../../context/AppContext";
 import { CheckCircle } from "lucide-react";
 
 export default function HospitalHistory() {
-  const { requests } = useApp();
-  const fulfilled = requests.filter((r) => r.hospitalId === "h1" && r.status === "Fulfilled");
+  const { requests, currentUser } = useApp();
+  const fulfilled = requests.filter((r) => r.hospitalId === currentUser?.id && r.status === "Fulfilled");
   return (
     <DashboardLayout>
       <PageHeader title="Request History" subtitle={`${fulfilled.length} fulfilled requests from CityCare Hospital.`} />

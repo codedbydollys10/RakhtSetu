@@ -8,19 +8,35 @@ import { UrgencyBadge } from "../../components/ui/Badge";
 import { useApp } from "../../context/AppContext";
 
 export default function DonorDashboard() {
-  const { donors, requests, currentUser, toggleDonorAvailability, updateRequestStatus } = useApp();
-  const me = donors.find((d) => d.id === "d1");
+  const { donors, requests, currentUser, donorAvailability, toggleDonorAvailability, updateRequestStatus } = useApp();
+  const donorRecord = donors.find((d) => d.id === currentUser?.id);
+  const me = donorRecord ?? (currentUser ? {
+    id: currentUser.id,
+    name: currentUser.name,
+    bloodGroup: "Not available",
+    area: "",
+    city: "",
+    status: "Inactive" as const,
+    available: donorAvailability ?? false,
+    lastDonation: "Not recorded",
+    donationsCount: 0,
+    phone: "",
+    matchScore: 0,
+    contactedBy: [],
+  } : null);
   const [responded, setResponded] = React.useState<string[]>([]);
 
   const relevantRequests = requests.filter((r) =>
     ["Donors Contacted", "Verified", "Matching"].includes(r.status) &&
-    r.matchedDonors?.includes("d1")
+    r.matchedDonors?.includes(currentUser?.id ?? "")
   );
 
   const handleAccept = (reqId: string) => {
     setResponded((r) => [...r, reqId]);
     updateRequestStatus(reqId, "Donor Confirmed");
   };
+
+  const available = donorRecord ? donorAvailability ?? donorRecord.available : donorAvailability ?? false;
 
   if (!me) return null;
 
@@ -35,25 +51,25 @@ export default function DonorDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`rounded-xl p-5 mb-6 flex items-center justify-between gap-4 ${me.available ? "bg-[#021734]" : "bg-[#F0F6F8] border border-[#C0D2DE]/60"}`}
+        className={`rounded-xl p-5 mb-6 flex items-center justify-between gap-4 ${available ? "bg-[#021734]" : "bg-[#F0F6F8] border border-[#C0D2DE]/60"}`}
       >
         <div>
-          <p className={`font-semibold ${me.available ? "text-white" : "text-[#021734]"}`}>
-            {me.available ? "You are available to donate." : "You are currently unavailable."}
+          <p className={`font-semibold ${available ? "text-white" : "text-[#021734]"}`}>
+            {available ? "You are currently available." : "You are currently unavailable."}
           </p>
-          <p className={`text-xs mt-1 ${me.available ? "text-white/50" : "text-[#021734]/50"}`}>
-            {me.available ? "Matching requests can find and contact you." : "You won't be matched until you toggle availability back on."}
+          <p className={`text-xs mt-1 ${available ? "text-white/50" : "text-[#021734]/50"}`}>
+            {available ? "You will be matched with compatible requests in your area." : "You won't be matched until you toggle availability back on."}
           </p>
         </div>
         <button
-          onClick={() => toggleDonorAvailability("d1")}
-          className={`relative w-14 h-7 rounded-full transition-all duration-300 flex-shrink-0 ${me.available ? "bg-[#1C8791]" : "bg-[#CECFD3]"}`}
+          onClick={() => currentUser && toggleDonorAvailability(currentUser.id)}
+          className={`relative w-14 h-7 rounded-full transition-all duration-300 flex-shrink-0 ${available ? "bg-[#1C8791]" : "bg-[#CECFD3]"}`}
         >
           <motion.div
             layout
             transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow"
-            style={{ left: me.available ? "calc(100% - 1.75rem)" : "0.125rem" }}
+            style={{ left: available ? "calc(100% - 1.75rem)" : "0.125rem" }}
           />
         </button>
       </motion.div>
@@ -66,7 +82,7 @@ export default function DonorDashboard() {
           <StatCard label="Blood Group" value={me.bloodGroup} sub="Universal donor compatible" icon={<Heart size={18} />} />
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <StatCard label="Last Donation" value="15 Jun" sub="90-day interval respected" icon={<Clock size={18} />} />
+          <StatCard label="Last Donation" value={me.lastDonation === "Not recorded" ? "Not available" : me.lastDonation} sub="90-day interval respected" icon={<Clock size={18} />} />
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <StatCard label="Match Score" value={`${me.matchScore}%`} sub="Coordination score only" icon={<Award size={18} />} accent="bg-[#036D7D]/10 text-[#036D7D]" />
@@ -135,8 +151,8 @@ export default function DonorDashboard() {
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: "Lives potentially helped", value: `${me.donationsCount * 3}` },
-                { label: "Donation area", value: me.area },
-                { label: "Member since", value: "Jan 2023" },
+                { label: "Donation area", value: me.area || "Not available" },
+                { label: "Member since", value: "Not available" },
                 { label: "Coordination score", value: `${me.matchScore}%` },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-white/10 rounded-lg p-3">

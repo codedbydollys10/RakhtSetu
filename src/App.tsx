@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AppProvider, useApp } from "./context/AppContext";
+import { useApp } from "./context/AppContext";
 
 import Landing from "./pages/Landing";
 import SignIn from "./pages/SignIn";
@@ -48,6 +48,8 @@ function ProtectedRoute({ role, children }: { role: "hospital" | "ngo" | "donor"
 }
 
 function AppRoutes() {
+  const { authLoading } = useApp();
+  if (authLoading) return null;
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
@@ -97,9 +99,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppProvider>
-        <AppRoutes />
-      </AppProvider>
+      <AppRoutes />
     </BrowserRouter>
   );
 }
