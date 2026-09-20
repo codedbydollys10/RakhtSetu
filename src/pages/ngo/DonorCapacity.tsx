@@ -22,7 +22,7 @@ export default function NGODonorCapacity() {
       <PageHeader title="Donor Capacity" subtitle="Understand your donor network's real-time availability and re-engagement potential." />
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-[#C0D2DE]/60 p-6">
+        <div className="bg-white rounded-xl border border-border/60 p-6">
           <h3 className="text-sm font-semibold text-[#021734] mb-5">Network Capacity Overview</h3>
           <div className="flex items-center gap-6">
             <ResponsiveContainer width="55%" height={200}>
@@ -53,8 +53,8 @@ export default function NGODonorCapacity() {
             { label: "Inactive", count: inactive.length, desc: "No activity in 6+ months", color: "bg-[#CECFD3]" },
             { label: "Potentially Re-engageable", count: reEngageable.length, desc: "Inactive with prior donation history", color: "bg-[#79C3D0]" },
           ].map(({ label, count, desc, color }) => (
-            <div key={label} className="bg-white rounded-xl border border-[#C0D2DE]/60 p-4 flex items-center gap-4">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${color}`}>
+            <div key={label} className="bg-white rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0 ${color}`}>
                 {count}
               </div>
               <div>
@@ -68,7 +68,7 @@ export default function NGODonorCapacity() {
 
       {/* Re-engageable donors */}
       {reEngageable.length > 0 && (
-        <div className="mt-6 bg-white rounded-xl border border-[#C0D2DE]/60 p-5">
+        <div className="mt-6 bg-white rounded-xl border border-border/60 p-5">
           <h3 className="text-sm font-semibold text-[#021734] mb-4">Re-Engagement Opportunities</h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {reEngageable.map((d) => (

@@ -6,13 +6,13 @@ import { UrgencyBadge } from "../../components/ui/Badge";
 import { useApp } from "../../context/AppContext";
 
 export default function DonorRequests() {
-  const { requests, donors, updateRequestStatus } = useApp();
-  const me = donors.find((d) => d.id === "d1")!;
+  const { requests, donors, currentUser, updateRequestStatus } = useApp();
+  const me = donors.find((d) => d.id === currentUser?.id);
   const [responded, setResponded] = useState<string[]>([]);
 
   const myRequests = requests.filter((r) =>
     ["Donors Contacted", "Verified", "Matching", "Donor Confirmed"].includes(r.status) &&
-    (r.matchedDonors?.includes("d1") || r.confirmedDonor === "d1")
+    (r.matchedDonors?.includes(currentUser?.id ?? "") || r.confirmedDonor === currentUser?.id)
   );
 
   const handleAccept = (reqId: string) => {
