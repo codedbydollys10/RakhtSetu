@@ -1,5 +1,5 @@
 
-# <p align="center">🩸 RakhtSetu
+# <p align="center">🩸 SAHAYOG
 
 <p align="center">
   <strong>A Community Blood Donation & Emergency Coordination Platform</strong>
