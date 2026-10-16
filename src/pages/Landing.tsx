@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import BrandLogo from "../components/ui/BrandLogo";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
@@ -82,12 +83,12 @@ function NetworkVisual() {
         <span className="text-[9px] font-bold tracking-[.16em] text-bg/80">RAKHSETU</span>
       </div>
 
-      <div className="absolute right-0 top-36.25 z-30 flex w-36.25 items-center gap-2 rounded-xl border border-blue-light/60 bg-bg p-2.5 shadow-xl">
+      <div className="network-info-card absolute right-0 top-36.25 z-30 flex w-36.25 items-center gap-2 rounded-xl p-2.5 shadow-xl">
         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-soft text-[10px] font-bold text-primary">RK</div>
         <div><p className="text-[10px] font-bold text-navy">Rohit Kumar</p><p className="text-[9px] text-ink-soft/60">B+ · 2.1 km</p><p className="mt-1 text-[8px] font-bold text-success">● Available to donate</p></div>
       </div>
 
-      <div className="absolute bottom-0 left-1/2 z-30 -translate-x-1/2 rounded-xl border border-blue-light/60 bg-bg px-4 py-3 shadow-xl">
+      <div className="network-info-card absolute bottom-0 left-1/2 z-30 -translate-x-1/2 rounded-xl px-4 py-3 shadow-xl">
         <p className="text-[9px] font-bold uppercase tracking-widest text-alert">● Critical</p>
         <p className="text-[11px] font-bold text-navy">O+ Required — 2 Units</p>
         <p className="text-[9px] text-ink-soft/60">AIIMS Delhi · 3.8 km</p>
@@ -220,12 +221,12 @@ export default function Landing() {
     <div className="landing-page min-h-screen scroll-smooth bg-bg font-sans">
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 bg-[#031A36] backdrop-blur border-b border-cyan/20">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="RakhtSetu logo" className="theme-preserve-white h-8 w-8 rounded-lg bg-white object-contain" />
+        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2 justify-self-start">
+            <BrandLogo />
             <span className="font-display text-xl font-bold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
           </div>
-          <div className="hidden items-center gap-6 text-sm text-bg/70 md:flex">
+          <div className="hidden items-center justify-self-center gap-6 text-sm text-bg/70 md:flex">
             <a href="#how" className="transition-colors hover:text-cyan">3D Anatomy</a>
             <a href="#roles" className="transition-colors hover:text-cyan">How It Works</a>
             <a href="#portals" className="transition-colors hover:text-cyan">Portals</a>
@@ -235,10 +236,10 @@ export default function Landing() {
             <a href="#privacy" className="transition-colors hover:text-cyan">FAQ</a>
             <a href="#cta" className="transition-colors hover:text-cyan">CTA</a>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="justify-self-end">
             <Link
               to="/signin"
-              className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-bold text-[#031A36] shadow-sm transition-transform hover:-translate-y-0.5 hover:bg-cyan"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-cyan/40 bg-cyan/15 px-6 py-3 text-sm font-medium text-bg transition-all hover:bg-cyan/25"
             >
               Sign in
             </Link>
@@ -377,7 +378,7 @@ export default function Landing() {
                       ))}
                     </div>
                   )}
-                  <div className="rounded-xl border border-cyan-100/50 bg-cyan-50/50 p-4">
+                  <div className="anatomy-impact-card rounded-xl p-4">
                     <h5 className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-primary"><Zap size={12} /> Transfusion Impact</h5>
                     <p className="text-sm font-medium leading-relaxed text-slate-700">{selectedOrgan.impact}</p>
                   </div>
@@ -924,7 +925,7 @@ export default function Landing() {
         <div className="mx-auto grid max-w-6xl gap-12 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <img src="/logo.png" alt="RakhtSetu logo" className="theme-preserve-white h-7 w-7 rounded-lg bg-white object-contain" />
+              <BrandLogo className="h-12 w-auto shrink-0 object-contain" />
               <span className="font-display text-lg font-extrabold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
             </Link>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">Connecting the right donor to the right need through a trusted community network.</p>

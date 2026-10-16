@@ -23,6 +23,8 @@ import {
 import type { LucideIcon } from "lucide-react"
 import ThemeToggle from "../components/ui/ThemeToggle"
 import VascularBackground from "../components/ui/VascularBackground"
+import AutoplayVideo from "../components/ui/AutoplayVideo"
+import BrandLogo from "../components/ui/BrandLogo"
 
 import L from "leaflet"
 
@@ -882,34 +884,22 @@ export default function Register() {
         className="auth-brand-panel hidden min-h-screen flex-1 flex-col justify-between overflow-hidden p-12 lg:flex"
       >
         <Link to="/" className="flex items-center gap-2">
-          <img
-            src="/logo.png"
-            alt="RakhtSetu logo"
-            className="theme-preserve-white h-8 w-8 rounded-lg bg-white object-contain"
-          />
+          <BrandLogo />
           <span className="font-display text-xl font-bold text-white">
             RakhtSetu
           </span>
         </Link>
         <div className="flex min-h-0 flex-1 flex-col justify-center py-8">
           <div
-            className={`mx-auto flex w-full max-w-155 items-center justify-center gap-2 ${activeMedia.assets.length > 1 ? "h-97.5" : "h-117.5"}`}
+            className={`auth-media-frame mx-auto flex w-full max-w-155 items-center justify-center gap-2 ${activeMedia.assets.length > 1 ? "h-97.5" : "h-117.5"}`}
           >
             {activeMedia.assets.map((asset) => (
               <div
                 key={asset.path}
-                className="relative h-full min-w-0 flex-1 overflow-hidden rounded-[28px] border-2 border-cyan/65 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]"
+                className="auth-media-content relative h-full min-w-0 flex-1 overflow-hidden rounded-2xl"
               >
                 {asset.path.endsWith(".mp4") ? (
-                  <video
-                    src={asset.path}
-                    aria-label={asset.label}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    className="h-full w-full object-contain"
-                  />
+                  <AutoplayVideo src={asset.path} label={asset.label} />
                 ) : (
                   <div
                     className={

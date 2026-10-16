@@ -33,6 +33,7 @@ import {
 
 import { useApp } from "../../context/AppContext"
 import ThemeToggle from "../ui/ThemeToggle"
+import BrandLogo from "../ui/BrandLogo"
 
 const hospitalNav = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/hospital/dashboard" },
@@ -161,9 +162,10 @@ export default function Sidebar() {
           collapsed ? "justify-center px-2" : ""
         }`}
       >
-        <div className="theme-preserve-white flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-          <Droplets size={19} className="text-[#E51C3D]" strokeWidth={2.5} />
-        </div>
+        <BrandLogo
+          alt=""
+          className={`flex-shrink-0 object-contain ${collapsed ? "h-12 max-w-16" : "h-14 w-auto"}`}
+        />
         {!collapsed && (
           <div>
             <p className="font-display text-base font-bold leading-tight">

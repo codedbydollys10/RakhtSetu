@@ -7,6 +7,8 @@ import {
   BarChart3,
   ArrowRight,
   CheckCircle,
+  Droplets,
+  HeartHandshake,
 } from "lucide-react"
 import DashboardLayout from "../../components/layout/DashboardLayout"
 import { UrgencyBadge } from "../../components/ui/Badge"
@@ -84,25 +86,25 @@ export default function NGODashboard() {
 
   return (
     <DashboardLayout>
-      <header className="mb-8 overflow-hidden rounded-2xl border border-[#D8E3EA] bg-white shadow-[0_4px_18px_rgba(3,26,54,0.05)]">
-        <div className="grid min-h-40 items-center gap-4 bg-gradient-to-r from-white via-white to-[#E8F4F6] px-5 py-5 sm:grid-cols-[minmax(0,1fr)_200px] sm:px-7">
+      <header className="ngo-welcome-card mb-8 overflow-hidden rounded-2xl shadow-[0_4px_18px_rgba(3,26,54,0.05)]">
+        <div className="ngo-welcome-surface grid min-h-40 items-center gap-4 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_200px] sm:px-7">
           <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#087B8C]">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-(--teal)">
               NGO Portal
             </p>
-            <h1 className="font-display text-2xl font-extrabold text-[#021734] sm:text-[28px]">
+            <h1 className="font-display text-2xl font-extrabold text-(--text-primary) sm:text-[28px]">
               Welcome, {currentUser?.name}
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#617587]">
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--text-secondary)">
               Coordinate blood requests, verify donors, and manage your network.
             </p>
           </div>
-          <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl bg-white/80 sm:h-32">
-            <img
-              src="/sounds/ngo.png"
-              alt="Community members joining hands"
-              className="h-full w-full object-contain"
-            />
+          <div className="ngo-welcome-art" aria-hidden="true">
+            <span className="ngo-art-orbit ngo-art-orbit-outer" />
+            <span className="ngo-art-orbit ngo-art-orbit-inner" />
+            <span className="ngo-art-node ngo-art-node-left"><Users size={18} /></span>
+            <span className="ngo-art-node ngo-art-node-center"><HeartHandshake size={26} /></span>
+            <span className="ngo-art-node ngo-art-node-right"><Droplets size={17} /></span>
           </div>
         </div>
       </header>
