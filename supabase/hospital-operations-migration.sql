@@ -82,14 +82,28 @@ alter table public.donor_responses enable row level security;
 drop policy if exists "Hospitals can manage their patients" on public.patients;
 create policy "Hospitals can manage their patients"
   on public.patients for all to authenticated
-  using (auth.uid() = hospital_id)
-  with check (auth.uid() = hospital_id);
+  using (exists (
+    select 1 from public.hospitals h
+    where h.id = public.patients.hospital_id and h.user_id = auth.uid()
+  ))
+  with check (exists (
+    select 1 from public.hospitals h
+    where h.id = public.patients.hospital_id and h.user_id = auth.uid()
+  ));
 
 drop policy if exists "Hospitals can manage their notification preferences" on public.hospital_notification_preferences;
 create policy "Hospitals can manage their notification preferences"
   on public.hospital_notification_preferences for all to authenticated
-  using (auth.uid() = hospital_id)
-  with check (auth.uid() = hospital_id);
+  using (exists (
+    select 1 from public.hospitals h
+    where h.id = public.hospital_notification_preferences.hospital_id
+      and h.user_id = auth.uid()
+  ))
+  with check (exists (
+    select 1 from public.hospitals h
+    where h.id = public.hospital_notification_preferences.hospital_id
+      and h.user_id = auth.uid()
+  ));
 
 drop policy if exists "Donors can manage their own responses" on public.donor_responses;
 create policy "Donors can manage their own responses"
@@ -108,7 +122,8 @@ create policy "Hospitals can view responses to their requests"
   on public.donor_responses for select to authenticated
   using (exists (
     select 1 from public.blood_requests r
-    where r.id = request_id and r.hospital_id = auth.uid()
+    join public.hospitals h on h.id = r.hospital_id
+    where r.id = request_id and h.user_id = auth.uid()
   ));
 
 grant select, insert, update, delete on public.patients to authenticated;

@@ -22,13 +22,16 @@ import { useApp } from "../../context/AppContext"
 import { supabase } from "../../lib/supabase"
 
 import type { BloodRequest } from "../../data/mockData"
+
 import InteractiveNetworkMap, {
   type Coordinates,
 } from "../../components/hospital/InteractiveMap"
 
 type DonorResponseRow = {
   request_id: string
+
   status: string
+
   responded_at: string
 }
 
@@ -67,8 +70,11 @@ function statusFor(request: BloodRequest) {
   if (
     [
       "Donor Confirmed",
+
       "Hospital Confirmation",
+
       "Matching",
+
       "Donors Contacted",
     ].includes(request.status)
   )
@@ -79,10 +85,15 @@ function statusFor(request: BloodRequest) {
 
 function StatCard({
   title,
+
   value,
+
   helper,
+
   icon: Icon,
+
   color,
+
   loading,
 }: {
   title: string
@@ -99,7 +110,9 @@ function StatCard({
 }) {
   const styles = {
     red: "bg-rose-50 text-[#E11D48]",
+
     green: "bg-green-50 text-[#16A34A]",
+
     purple: "bg-purple-50 text-[#7C3AED]",
   }
 
@@ -132,9 +145,15 @@ function StatCard({
 export default function HospitalDashboard() {
   const {
     requests,
+
     currentUser,
+
     roleDetails,
+
+    hospitalRecordId,
+
     hospitalRequestsLoading,
+
     hospitalRequestsError,
   } = useApp()
 
@@ -145,8 +164,9 @@ export default function HospitalDashboard() {
   const [responseError, setResponseError] = useState<string | null>(null)
 
   const hospitalRequests = useMemo(
-    () => requests.filter((request) => request.hospitalId === currentUser?.id),
-    [requests, currentUser?.id],
+    () => requests.filter((request) => request.hospitalId === hospitalRecordId),
+
+    [requests, hospitalRecordId],
   )
 
   const activeRequests = hospitalRequests.filter(
@@ -156,10 +176,14 @@ export default function HospitalDashboard() {
   const fulfilled = hospitalRequests.filter(
     (request) => request.status === "Fulfilled",
   )
+
   const now = new Date()
+
   const fulfilledThisMonth = fulfilled.filter((request) => {
     if (!request.fulfilledAt) return false
+
     const completed = new Date(request.fulfilledAt)
+
     return (
       completed.getMonth() === now.getMonth() &&
       completed.getFullYear() === now.getFullYear()
@@ -187,24 +211,28 @@ export default function HospitalDashboard() {
   const doctorName = contactName.toLowerCase().startsWith("dr.")
     ? contactName
     : `Dr. ${contactName}`
+
   const parsedMapLocation =
     typeof roleDetails?.map_location === "string"
       ? roleDetails.map_location.match(
           /\(?\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*\)?\s*$/,
         )
       : null
+
   const hospitalLatitude =
     typeof roleDetails?.latitude === "number"
       ? roleDetails.latitude
       : parsedMapLocation
         ? Number(parsedMapLocation[1])
         : null
+
   const hospitalLongitude =
     typeof roleDetails?.longitude === "number"
       ? roleDetails.longitude
       : parsedMapLocation
         ? Number(parsedMapLocation[2])
         : null
+
   const hospitalLocation: Coordinates | null =
     hospitalLatitude != null &&
     hospitalLongitude != null &&
@@ -214,43 +242,65 @@ export default function HospitalDashboard() {
       : null
 
   const recentRequests = [...hospitalRequests]
+
     .sort(
       (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
     )
+
     .slice(0, 6)
 
   const recentActivity = [
     ...hospitalRequests.map((request) => ({
       key: `created-${request.id}`,
+
       title: "Blood request created",
+
       description: `${request.id.slice(0, 12)} · ${request.bloodGroup} · ${request.units} units`,
+
       timestamp: request.createdAt,
+
       icon: Droplets,
     })),
+
     ...responseRows
+
       .filter((response) => response.status !== "Cancelled")
+
       .map((response) => ({
         key: `response-${response.request_id}-${response.responded_at}`,
+
         title: "Donor response received",
+
         description: `A donor responded to ${response.request_id.slice(0, 12)}`,
+
         timestamp: response.responded_at,
+
         icon: Check,
       })),
+
     ...fulfilled
+
       .filter((request): request is BloodRequest & { fulfilledAt: string } =>
         Boolean(request.fulfilledAt),
       )
+
       .map((request) => ({
         key: `fulfilled-${request.id}`,
+
         title: "Request fulfilled",
+
         description: `${request.id.slice(0, 12)} · ${request.bloodGroup}`,
+
         timestamp: request.fulfilledAt,
+
         icon: CircleCheck,
       })),
   ]
+
     .sort(
       (left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp),
     )
+
     .slice(0, 3)
 
   useEffect(() => {
@@ -274,35 +324,45 @@ export default function HospitalDashboard() {
 
     const loadResponses = () => {
       void supabase
+
         .from("donor_responses")
+
         .select("request_id,status,responded_at")
+
         .in("request_id", requestIds)
+
         .then(({ data, error }) => {
           if (cancelled) return
 
           if (error) {
             setResponseError(error.message)
+
             setResponseRows([])
           } else setResponseRows((data ?? []) as DonorResponseRow[])
 
           setResponseLoading(false)
         })
     }
+
     loadResponses()
+
     const interval = window.setInterval(loadResponses, 30000)
 
     return () => {
       cancelled = true
+
       window.clearInterval(interval)
     }
   }, [hospitalRequests.map((request) => request.id).join("|")])
 
   const notified = activeRequests.reduce(
     (total, request) => total + (request.matchedDonors?.length ?? 0),
+
     0,
   )
 
   const activeRequestIds = new Set(activeRequests.map((request) => request.id))
+
   const activeResponses = responseRows.filter(
     (response) =>
       activeRequestIds.has(response.request_id) &&
@@ -326,14 +386,18 @@ export default function HospitalDashboard() {
     : 0
 
   const responseDurations = responseRows
+
     .filter((response) => response.status !== "Cancelled")
+
     .flatMap((response) => {
       const respondedAt = new Date(response.responded_at)
+
       if (
         respondedAt.getMonth() !== now.getMonth() ||
         respondedAt.getFullYear() !== now.getFullYear()
       )
         return []
+
       const request = hospitalRequests.find(
         (item) => item.id === response.request_id,
       )
@@ -467,10 +531,15 @@ export default function HospitalDashboard() {
                     <tr className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                       {[
                         "Date & Time",
+
                         "Blood Group",
+
                         "Units",
+
                         "Urgency",
+
                         "Status",
+
                         "Actions",
                       ].map((label) => (
                         <th key={label} className="px-3 py-3">
@@ -597,10 +666,14 @@ export default function HospitalDashboard() {
                   <div className="grid flex-1 gap-3">
                     {[
                       { value: notified, label: "Matched donors", icon: Bell },
+
                       { value: responded, label: "Responded", icon: Check },
+
                       {
                         value: confirmed,
+
                         label: "Confirmed",
+
                         icon: ShieldCheck,
                       },
                     ].map(({ value, label, icon: Icon }) => (
@@ -656,8 +729,10 @@ export default function HospitalDashboard() {
                     const count = activeRequests.filter(
                       (request) => request.bloodGroup === group,
                     ).length
+
                     const maximum = Math.max(
                       1,
+
                       ...groups.map(
                         (item) =>
                           activeRequests.filter(
@@ -665,6 +740,7 @@ export default function HospitalDashboard() {
                           ).length,
                       ),
                     )
+
                     return (
                       <div
                         key={group}
@@ -720,14 +796,20 @@ export default function HospitalDashboard() {
             <div className="mt-5 grid grid-cols-3 gap-3">
               {[
                 { name: "Active", count: active.length, color: "bg-rose-500" },
+
                 {
                   name: "In Progress",
+
                   count: inProgress.length,
+
                   color: "bg-amber-500",
                 },
+
                 {
                   name: "Fulfilled",
+
                   count: fulfilled.length,
+
                   color: "bg-green-500",
                 },
               ].map((item) => (
@@ -747,7 +829,7 @@ export default function HospitalDashboard() {
 
         {currentUser && (
           <InteractiveNetworkMap
-            hospitalId={currentUser.id}
+            hospitalId={hospitalRecordId ?? ""}
             hospitalLocation={hospitalLocation}
             hospitalName={hospitalName}
             requests={hospitalRequests}

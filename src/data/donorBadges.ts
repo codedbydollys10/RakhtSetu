@@ -51,7 +51,7 @@ export function getDonorBadgeStats({
     confirmedDonor?: string
   }[]
 
-  responses: { requestId: string status: string }[]
+  responses: { requestId: string; status: string }[]
 }): DonorBadgeStats {
   const donationTotal = Number.isFinite(totalDonations)
     ? Math.max(0, totalDonations)

@@ -14,7 +14,7 @@ import { supabase } from "../../lib/supabase"
 
 import type { BloodRequest } from "../../data/mockData"
 
-export type Coordinates = { latitude: number longitude: number }
+export type Coordinates = { latitude: number; longitude: number }
 
 export type NetworkResource = {
   resource_id: string
@@ -58,7 +58,7 @@ type NetworkMapProps = {
   className?: string
 }
 
-type SearchResult = { lat: string lon: string display_name: string }
+type SearchResult = { lat: string; lon: string; display_name: string }
 
 type MapItem = {
   id: string
@@ -473,20 +473,21 @@ export default function InteractiveNetworkMap({
 
         blood_group_filter: bloodGroup === "All" ? null : bloodGroup,
       })
-      .then(({ data, error }) => {
-        if (cancelled) return
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return
 
-        if (error) {
-          setLoadError(error.message)
+          if (error) {
+            setLoadError(error.message)
 
-          setResources([])
-        } else {
-          setResources((data ?? []) as NetworkResource[])
-        }
+            setResources([])
+          } else {
+            setResources((data ?? []) as NetworkResource[])
+          }
 
-        setLoading(false)
-      })
-      .catch((error: unknown) => {
+          setLoading(false)
+        },
+        (error: unknown) => {
         if (cancelled) return
 
         setLoadError(
@@ -496,7 +497,8 @@ export default function InteractiveNetworkMap({
         )
         setResources([])
         setLoading(false)
-      })
+        },
+      )
 
     return () => {
       cancelled = true

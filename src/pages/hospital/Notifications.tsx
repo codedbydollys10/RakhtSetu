@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Bell, CheckCircle, Zap, MessageSquare, Settings } from "lucide-react";
 import DashboardLayout, { PageHeader } from "../../components/layout/DashboardLayout";
@@ -9,12 +9,38 @@ const typeIcon = { request: Zap, match: CheckCircle, verified: CheckCircle, mess
 const typeColor = { request: "text-red-500 bg-red-50", match: "text-emerald-600 bg-emerald-50", verified: "text-[#036D7D] bg-[#036D7D]/10", message: "text-[#1C8791] bg-[#1C8791]/10", system: "text-gray-500 bg-gray-50" };
 
 export default function HospitalNotifications() {
-  const { notifications, markNotificationRead } = useApp();
+  const { notifications, notificationsError, markNotificationRead, markNotificationsRead } = useApp();
+  const [error, setError] = useState<string | null>(null);
+  const markOne = async (id: string) => {
+    setError(null);
+    try {
+      await markNotificationRead(id);
+    } catch (readError) {
+      setError(
+        readError instanceof Error
+          ? readError.message
+          : "Unable to update this notification.",
+      );
+    }
+  };
+  const markAll = async () => {
+    setError(null);
+    try {
+      await markNotificationsRead(notifications.map((notification) => notification.id));
+    } catch (readError) {
+      setError(
+        readError instanceof Error
+          ? readError.message
+          : "Unable to update notifications.",
+      );
+    }
+  };
   return (
     <DashboardLayout>
       <PageHeader title="Notifications" subtitle="Alerts and updates from your network." actions={
-        <Button variant="outline" size="sm" onClick={() => notifications.forEach(n => markNotificationRead(n.id))}>Mark all read</Button>
+        <Button variant="outline" size="sm" onClick={() => void markAll()}>Mark all read</Button>
       } />
+      {(notificationsError || error) && <p role="alert" className="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{notificationsError ? `Notifications could not be loaded: ${notificationsError}` : error}</p>}
       <div className="max-w-2xl space-y-3">
         {notifications.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#C0D2DE]/60 p-10 text-center">
@@ -38,7 +64,7 @@ export default function HospitalNotifications() {
                 </p>
               </div>
               {!n.read && (
-                <button onClick={() => markNotificationRead(n.id)} className="text-xs text-[#036D7D] hover:underline self-start flex-shrink-0">Mark read</button>
+                <button onClick={() => void markOne(n.id)} className="text-xs text-[#036D7D] hover:underline self-start flex-shrink-0">Mark read</button>
               )}
             </motion.div>
           );

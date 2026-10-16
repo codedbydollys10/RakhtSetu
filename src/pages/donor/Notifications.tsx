@@ -25,17 +25,17 @@ const categories = ["All", "Requests", "Responses", "System"] as const
 type Category = typeof categories[number]
 
 export default function DonorNotifications() {
-  const { notifications } = useApp()
-
   const {
-    readNotifications,
-    deletedNotifications,
-    markRead,
-    markAllRead,
-    deleteNotification,
-  } = useDonorPortal()
+    notifications,
+    notificationsError,
+    markNotificationRead,
+    markNotificationsRead,
+  } = useApp()
+
+  const { deletedNotifications, deleteNotification } = useDonorPortal()
 
   const [category, setCategory] = useState<Category>("All")
+  const [error, setError] = useState<string | null>(null)
 
   const visible = useMemo(
     () =>
@@ -51,8 +51,31 @@ export default function DonorNotifications() {
     [category, deletedNotifications, notifications],
   )
 
-  const isRead = (id: string, original: boolean) =>
-    original || readNotifications.includes(id)
+  const markOne = async (id: string) => {
+    setError(null)
+    try {
+      await markNotificationRead(id)
+    } catch (readError) {
+      setError(
+        readError instanceof Error
+          ? readError.message
+          : "Unable to update this notification.",
+      )
+    }
+  }
+
+  const markAll = async () => {
+    setError(null)
+    try {
+      await markNotificationsRead(visible.map((notice) => notice.id))
+    } catch (readError) {
+      setError(
+        readError instanceof Error
+          ? readError.message
+          : "Unable to update notifications.",
+      )
+    }
+  }
 
   return (
     <DashboardLayout>
@@ -63,13 +86,20 @@ export default function DonorNotifications() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => markAllRead(visible.map((notice) => notice.id))}
+            onClick={() => void markAll()}
           >
             <CheckCheck size={14} className="mr-1.5" />
             Mark all read
           </Button>
         }
       />
+      {(notificationsError || error) && (
+        <p role="alert" className="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+          {notificationsError
+            ? `Notifications could not be loaded: ${notificationsError}`
+            : error}
+        </p>
+      )}
       <div className="mb-4 flex gap-2 overflow-x-auto border-b border-[#D8E3EA]">
         {categories.map((item) => (
           <button
@@ -87,7 +117,7 @@ export default function DonorNotifications() {
       </div>
       <div className="space-y-2">
         {visible.map((notice) => {
-          const read = isRead(notice.id, notice.read)
+          const read = notice.read
 
           const Icon =
             notice.type === "request"
@@ -142,7 +172,7 @@ export default function DonorNotifications() {
                   aria-label={read ? "Already read" : "Mark as read"}
                   title={read ? "Read" : "Mark as read"}
                   disabled={read}
-                  onClick={() => markRead(notice.id)}
+                  onClick={() => void markOne(notice.id)}
                   className="rounded-lg p-2 text-[#617587] hover:bg-[#F5F8FA] disabled:opacity-30"
                 >
                   <Check size={14} />

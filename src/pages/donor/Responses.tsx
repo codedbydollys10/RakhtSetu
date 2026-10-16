@@ -34,9 +34,9 @@ const statusTone: Record<DonorResponseStatus, string> = {
 }
 
 export default function DonorResponses() {
-  const { requests, updateRequestStatus } = useApp()
+  const { requests, requestFeedError } = useApp()
 
-  const { responses, updateResponse } = useDonorPortal()
+  const { responses, responsesError, updateResponse } = useDonorPortal()
 
   const [tab, setTab] = useState<Tab>("All")
 
@@ -90,8 +90,6 @@ export default function DonorResponses() {
       return
     }
 
-    updateRequestStatus(withdrawing, "Donors Contacted")
-
     setWithdrawing(null)
 
     setToast("Your response was withdrawn.")
@@ -105,6 +103,13 @@ export default function DonorResponses() {
         title="My Responses"
         subtitle="Track the requests you’ve responded to and manage your coordination status."
       />
+      {(responsesError || requestFeedError) && (
+        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {responsesError
+            ? `Responses could not be loaded: ${responsesError}`
+            : `Requests could not be loaded: ${requestFeedError}`}
+        </p>
+      )}
       <div className="mb-4 flex gap-2 overflow-x-auto border-b border-[#D8E3EA]">
         {tabs.map((item) => (
           <button

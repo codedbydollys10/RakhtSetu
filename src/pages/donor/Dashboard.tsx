@@ -421,7 +421,7 @@ export default function DonorDashboard() {
 
     toggleDonorAvailability,
 
-    updateRequestStatus,
+    requestFeedError,
   } = useApp()
   const donorPortal = useDonorPortal()
 
@@ -511,7 +511,6 @@ export default function DonorDashboard() {
       requests.filter(
         (request) =>
           hasBloodGroup &&
-          request.bloodGroup === bloodGroup &&
           activeStatuses.has(request.status) &&
           request.status !== "Fulfilled" &&
           !declinedIds.includes(request.id),
@@ -531,7 +530,6 @@ export default function DonorDashboard() {
     .filter(
       (request) =>
         hasBloodGroup &&
-        request.bloodGroup === bloodGroup &&
         activeStatuses.has(request.status) &&
         request.status !== "Fulfilled" &&
         `${request.hospitalName} ${request.area}`
@@ -598,7 +596,6 @@ export default function DonorDashboard() {
 
     try {
       await donorPortal.recordResponse(confirmRequest.id)
-      updateRequestStatus(confirmRequest.id, "Donor Confirmed")
     } catch (error) {
       setToast(
         error instanceof Error
@@ -618,6 +615,11 @@ export default function DonorDashboard() {
 
   return (
     <DashboardLayout>
+      {requestFeedError && (
+        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          Requests could not be loaded: {requestFeedError}
+        </p>
+      )}
       <div className="w-full space-y-7 pb-8">
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.9fr)]">
           <section className="flex w-full min-w-0 flex-col gap-5 rounded-[20px] border border-[#FFD1D9] bg-[#FFF1F3] px-5 py-5 shadow-[0_4px_18px_rgba(3,26,54,0.04)] md:flex-row md:items-center md:justify-between md:gap-6 md:px-7 md:py-6">

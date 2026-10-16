@@ -317,6 +317,25 @@ Users
 
 Hospital-specific database operations are maintained through the project's Supabase migration files.
 
+Blood-request distribution is implemented in
+`supabase/request-distribution-migration.sql`. For a new Supabase project, apply
+`supabase/schema.sql`, `supabase/hospital-operations-migration.sql`,
+`supabase/hospital-request-integrity-migration.sql`, then
+`supabase/request-distribution-migration.sql`. For an existing project, apply
+the migrations in that same order, skipping the base schema only if it is
+already installed. The hospital operations migration creates
+`donor_responses` (with `responded_at`/`updated_at`) and hospital notification
+preferences. The integrity migration adds request columns used by the form,
+backfills missing hospital/NGO records only when the matching profile and
+explicit organisation name in the original Auth registration metadata exist,
+and installs linked-record RLS policies. It does not invent organisation names
+or mark organisations verified. Review its final diagnostic query for records
+that still need onboarding data. The request distribution migration depends on
+these tables and installs NGO assignments, verification and donor matching,
+notifications, access policies, and triggers. Donor outreach starts only after
+an assigned, verified NGO verifies the request. The request table is
+`blood_requests`, not `requests`.
+
 ---
 
 # 🚀 Getting Started
@@ -401,7 +420,9 @@ RakhtSetu/
 │
 ├── supabase/
 │   ├── schema.sql
-│   └── hospital-operations-migration.sql
+│   ├── hospital-operations-migration.sql
+│   ├── hospital-request-integrity-migration.sql
+│   └── request-distribution-migration.sql
 │
 ├── package.json
 ├── vite.config.ts
