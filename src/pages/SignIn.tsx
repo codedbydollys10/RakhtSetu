@@ -5,6 +5,8 @@ import { ArrowLeft, Building2, Check, Eye, EyeOff, HeartHandshake, UserRound } f
 import lottie from "lottie-web";
 import { ProfileNotFoundError, RoleMismatchError, useApp } from "../context/AppContext";
 import type { LucideIcon } from "lucide-react";
+import ThemeToggle from "../components/ui/ThemeToggle";
+import VascularBackground from "../components/ui/VascularBackground";
 
 type Role = "hospital" | "ngo" | "donor";
 
@@ -91,16 +93,21 @@ export default function SignIn() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBFBFD] flex">
+    <div className="auth-page relative isolate flex min-h-screen overflow-hidden bg-(--page-bg)">
+      <VascularBackground variant="auth" />
+      <div className="auth-page-content relative z-10 flex min-h-screen w-full">
+      <div className="absolute right-4 top-4 z-40">
+        <ThemeToggle />
+      </div>
       <motion.div
         key={form.role}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.35 }}
-        className="hidden lg:flex flex-1 bg-[#031A36] p-12 flex-col justify-between overflow-hidden"
+        className="auth-brand-panel hidden flex-1 flex-col justify-between overflow-hidden p-12 lg:flex"
       >
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="RakhtSetu logo" className="h-8 w-8 rounded-lg bg-white object-contain" />
+          <img src="/logo.png" alt="RakhtSetu logo" className="theme-preserve-white h-8 w-8 rounded-lg bg-white object-contain" />
           <span className="font-display text-xl font-bold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
         </div>
         <div className="flex min-h-0 flex-1 flex-col justify-center py-8">
@@ -124,7 +131,7 @@ export default function SignIn() {
         </div>
       </motion.div>
 
-      <div className="flex-1 flex items-center justify-center p-5 sm:p-8 bg-[#F5F8FA]">
+      <div className="auth-form-panel flex flex-1 items-center justify-center p-5 sm:p-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -222,6 +229,7 @@ export default function SignIn() {
             </p>
           </div>
         </motion.div>
+      </div>
       </div>
     </div>
   );

@@ -4,11 +4,14 @@ type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const variantStyles: Record<Variant, string> = {
-  primary: "bg-[#036D7D] text-white hover:bg-[#057080] active:bg-[#011E40]",
-  secondary: "bg-[#C0D2DE] text-[#021734] hover:bg-[#79C3D0]",
-  outline: "border border-[#036D7D] text-[#036D7D] hover:bg-[#036D7D]/10",
-  ghost: "text-[#036D7D] hover:bg-[#036D7D]/10",
-  danger: "bg-red-600 text-white hover:bg-red-700",
+  primary:
+    "bg-(--brand) text-white hover:bg-(--brand-hover) active:bg-(--brand-hover)",
+  secondary:
+    "bg-(--surface-hover) text-(--text-primary) hover:bg-(--border)",
+  outline:
+    "border border-(--brand) text-(--brand) hover:bg-(--rose-soft)",
+  ghost: "text-(--brand) hover:bg-(--rose-soft)",
+  danger: "bg-(--error) text-white hover:opacity-90",
 };
 
 const sizeStyles: Record<Size, string> = {
@@ -26,7 +29,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 export default function Button({ variant = "primary", size = "md", loading, children, className = "", disabled, ...props }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#036D7D]/50 disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-(--focus-ring) disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
       disabled={disabled || loading}
       {...props}
     >

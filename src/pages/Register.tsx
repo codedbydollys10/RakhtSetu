@@ -21,6 +21,8 @@ import {
   Trash2,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import ThemeToggle from "../components/ui/ThemeToggle"
+import VascularBackground from "../components/ui/VascularBackground"
 
 import L from "leaflet"
 
@@ -866,19 +868,24 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F8FA] lg:flex">
+    <div className="auth-page relative isolate min-h-screen overflow-hidden bg-(--page-bg)">
+      <VascularBackground variant="auth" />
+      <div className="auth-page-content relative z-10 min-h-screen lg:flex">
+      <div className="absolute right-4 top-4 z-40">
+        <ThemeToggle />
+      </div>
       <motion.aside
         key={role || "hospital"}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.35 }}
-        className="hidden min-h-screen flex-1 flex-col justify-between overflow-hidden bg-[#031A36] p-12 lg:flex"
+        className="auth-brand-panel hidden min-h-screen flex-1 flex-col justify-between overflow-hidden p-12 lg:flex"
       >
         <Link to="/" className="flex items-center gap-2">
           <img
             src="/logo.png"
             alt="RakhtSetu logo"
-            className="h-8 w-8 rounded-lg bg-white object-contain"
+            className="theme-preserve-white h-8 w-8 rounded-lg bg-white object-contain"
           />
           <span className="font-display text-xl font-bold text-white">
             RakhtSetu
@@ -930,7 +937,7 @@ export default function Register() {
           Registration details stay protected.
         </p>
       </motion.aside>
-      <main className="flex flex-1 items-center justify-center p-5 sm:p-8">
+      <main className="auth-form-panel flex flex-1 items-center justify-center p-5 sm:p-8">
         <div className="w-full max-w-125">
           <Link
             to="/signin"
@@ -1034,6 +1041,7 @@ export default function Register() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   )
 }

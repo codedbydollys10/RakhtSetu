@@ -50,7 +50,7 @@ export default function DonorImpactChart() {
               margin={{ top: 8, right: 8, left: -22, bottom: 0 }}
             >
               <CartesianGrid
-                stroke="#E8EEF2"
+                stroke="var(--divider)"
                 strokeDasharray="3 3"
                 vertical={false}
               />
@@ -58,17 +58,19 @@ export default function DonorImpactChart() {
                 dataKey="month"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 11, fill: "#617587" }}
+                tick={{ fontSize: 11, fill: "var(--text-secondary)" }}
               />
               <YAxis
                 allowDecimals={false}
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 10, fill: "#617587" }}
+                tick={{ fontSize: 10, fill: "var(--text-secondary)" }}
               />
               <Tooltip
                 contentStyle={{
-                  border: "1px solid #D8E3EA",
+                  border: "1px solid var(--border)",
+                  backgroundColor: "var(--surface-elevated)",
+                  color: "var(--text-primary)",
                   borderRadius: 10,
                   fontSize: 12,
                 }}
@@ -77,13 +79,18 @@ export default function DonorImpactChart() {
                 dataKey="donations"
                 name="Donations"
                 type="monotone"
-                stroke="#E51C3D"
+                stroke="var(--brand)"
                 strokeWidth={3}
-                dot={{ r: 4, fill: "#E51C3D", stroke: "#fff", strokeWidth: 2 }}
+                dot={{
+                  r: 4,
+                  fill: "var(--brand)",
+                  stroke: "var(--surface)",
+                  strokeWidth: 2,
+                }}
                 activeDot={{
                   r: 6,
-                  fill: "#C91836",
-                  stroke: "#fff",
+                  fill: "var(--brand-hover)",
+                  stroke: "var(--surface)",
                   strokeWidth: 2,
                 }}
               />

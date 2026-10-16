@@ -116,7 +116,7 @@ function markerIcon(color: string, label: string) {
   return L.divIcon({
     className: "",
 
-    html: `<span style="display:grid;place-items:center;width:34px;height:34px;border:3px solid white;border-radius:50%;background:${color};box-shadow:0 2px 8px #0f172a55;color:white;font-weight:700;font-size:14px">${safeLabel}</span>`,
+    html: `<span style="display:grid;place-items:center;width:34px;height:34px;border:3px solid var(--surface);border-radius:50%;background:${color};box-shadow:0 2px 8px #0f172a55;color:white;font-weight:700;font-size:14px">${safeLabel}</span>`,
 
     iconSize: [34, 34],
 
@@ -170,7 +170,7 @@ export function MapLocationPicker({
       markerRef.current?.remove()
 
       markerRef.current = L.marker(event.latlng, {
-        icon: markerIcon("#E11D48", "H"),
+        icon: markerIcon("var(--marker-error)", "H"),
       }).addTo(map)
 
       onChange({
@@ -551,7 +551,10 @@ export default function InteractiveNetworkMap({
               })
             : 0,
 
-          color: request.urgency === "CRITICAL" ? "#E11D48" : "#F59E0B",
+          color:
+            request.urgency === "CRITICAL"
+              ? "var(--marker-error)"
+              : "var(--marker-warning)",
 
           requestId: request.id,
         }))
@@ -601,10 +604,10 @@ export default function InteractiveNetworkMap({
 
         color:
           resource.resource_type === "hospital"
-            ? "#E11D48"
+            ? "var(--marker-error)"
             : resource.resource_type === "donor"
-              ? "#16A34A"
-              : "#7C3AED",
+              ? "var(--marker-success)"
+              : "var(--marker-partner)",
       }))
   }, [mode, requests, resources, resourceFilter, hospitalLocation])
 
@@ -666,8 +669,8 @@ export default function InteractiveNetworkMap({
         [userLocation.latitude, userLocation.longitude],
         {
           radius: 8,
-          color: "#2563EB",
-          fillColor: "#60A5FA",
+          color: "var(--marker-info)",
+          fillColor: "var(--marker-info)",
           fillOpacity: 1,
           weight: 3,
         },
@@ -750,7 +753,7 @@ export default function InteractiveNetworkMap({
 
     if (mapRef.current) {
       searchMarker.current = L.marker([point.latitude, point.longitude], {
-        icon: markerIcon("#2563EB", "S"),
+        icon: markerIcon("var(--marker-info)", "S"),
       }).addTo(mapRef.current)
     }
 
@@ -764,7 +767,7 @@ export default function InteractiveNetworkMap({
       ...point,
       bloodGroups: [],
       distance: hospitalLocation ? distanceKm(hospitalLocation, point) : 0,
-      color: "#2563EB",
+      color: "var(--marker-info)",
     })
   }
 

@@ -222,7 +222,7 @@ export default function Landing() {
       <nav className="fixed top-0 inset-x-0 z-50 bg-[#031A36] backdrop-blur border-b border-cyan/20">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="RakhtSetu logo" className="h-8 w-8 rounded-lg bg-white object-contain" />
+            <img src="/logo.png" alt="RakhtSetu logo" className="theme-preserve-white h-8 w-8 rounded-lg bg-white object-contain" />
             <span className="font-display text-xl font-bold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
           </div>
           <div className="hidden items-center gap-6 text-sm text-bg/70 md:flex">
@@ -238,7 +238,7 @@ export default function Landing() {
           <div className="flex items-center gap-3">
             <Link
               to="/signin"
-              className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-[#031A36] shadow-sm transition-transform hover:-translate-y-0.5 hover:bg-cyan"
+              className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-bold text-[#031A36] shadow-sm transition-transform hover:-translate-y-0.5 hover:bg-cyan"
             >
               Sign in
             </Link>
@@ -399,19 +399,15 @@ export default function Landing() {
       </section>
 
       {/* Stats */}
-      <section className="stats-marquee overflow-hidden bg-[#031A36]">
-        <div className="marquee-track flex w-max min-w-max items-center gap-10 px-4 py-2 text-white">
+      <section className="stats-strip bg-[#031A36]">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-4 gap-y-5 px-4 py-5 text-white sm:grid-cols-4 sm:gap-6 sm:px-6">
           {[
             { value: '1.2K+', label: 'Connected Donors' },
             { value: '840', label: 'Verified Requests' },
             { value: '148', label: 'Partner Hospitals' },
             { value: '64', label: 'Partner Organisations' },
-            { value: '1.2K+', label: 'Connected Donors' },
-            { value: '840', label: 'Verified Requests' },
-            { value: '148', label: 'Partner Hospitals' },
-            { value: '64', label: 'Partner Organisations' },
           ].map(({ value, label }) => (
-            <div key={`${value}-${label}`} className="flex min-w-[170px] flex-col items-center justify-center text-center">
+            <div key={`${value}-${label}`} className="flex min-w-0 flex-col items-center justify-center text-center">
               <div className="text-[1.75rem] font-display font-bold leading-none text-white md:text-[2rem]">{value}</div>
               <div className="mt-0.5 text-xs text-cyan/90">{label}</div>
             </div>
@@ -419,100 +415,105 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="bg-white px-6 py-24" id="roles">
+      <section className="relative isolate overflow-hidden border-y border-white/5 bg-[#0B141C] px-6 py-24 md:py-28" id="roles">
+        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+          <div className="absolute -right-32 -top-40 h-96 w-96 rounded-full bg-cyan/5 blur-3xl" />
+          <div className="absolute -bottom-48 -left-32 h-96 w-96 rounded-full bg-alert/5 blur-3xl" />
+        </div>
         <div className="mx-auto max-w-7xl">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="mb-16 text-center"
+            className="mx-auto mb-14 max-w-2xl text-center md:mb-16"
           >
-            <h3 className="text-5xl font-display font-bold text-navy md:text-6xl">
-              How RakhtSetu works?
-            </h3>
-            <p className="mx-auto mt-5 max-w-xl text-lg text-navy/60">
-              A structured coordination flow that keeps every stakeholder informed and aligned.
+            <span className="inline-flex items-center gap-2 rounded-full border border-cyan/20 bg-cyan/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-cyan">
+              <Network size={14} /> A clear path from need to help
+            </span>
+            <h2 className="mt-6 text-4xl font-display font-bold leading-tight text-white md:text-6xl">
+              How RakhtSetu works
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-[#A0AFBB] md:text-lg">
+              One trusted flow brings hospitals, donors and community partners together — with clarity at every step.
             </p>
           </motion.div>
 
-          <div className="grid gap-4 lg:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {[
               {
                 num: '01',
                 title: 'Requirement Raised',
                 desc: 'Hospital creates a blood requirement with details including blood group, units, urgency, and location.',
-                icon: '🏥',
-                color: '#3b82f6',
+                icon: Building2,
+                tone: 'text-cyan',
               },
               {
                 num: '02',
                 title: 'Requirement Verified',
                 desc: 'The requirement is reviewed before wider circulation to ensure authenticity and details.',
-                icon: '✓',
-                color: '#22c55e',
+                icon: Shield,
+                tone: 'text-[#8BD4AE]',
               },
               {
                 num: '03',
                 title: 'Potential Donors Matched',
                 desc: 'RakhtSetu prioritises potential donor contacts based on coordination factors including availability, proximity, and history.',
-                icon: '🔍',
-                color: '#f59e0b',
+                icon: Search,
+                tone: 'text-cyan',
               },
               {
                 num: '04',
                 title: 'Community Responds',
                 desc: 'Donors and partner organisations receive structured notifications and respond to the requirement.',
-                icon: '❤️',
-                color: '#c0182a',
+                icon: Heart,
+                tone: 'text-[#E08099]',
               },
               {
                 num: '05',
                 title: 'Request Fulfilled',
                 desc: 'The hospital or coordinator updates the request lifecycle once the requirement is addressed.',
-                icon: '✅',
-                color: '#7a9bc4',
+                icon: CheckCircle,
+                tone: 'text-[#8BD4AE]',
               },
-            ].map((step, i) => (
-              <motion.div
-                key={step.num}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 + i * 0.1 }}
-                onMouseEnter={() => setActiveStep(i)}
-                className={`group relative cursor-pointer rounded-[1.5rem] border border-slate-200/80 bg-[#031A36] p-6 text-white transition-all duration-300 ${activeStep === i ? 'border-white/15 -translate-y-1' : ''}`}
-                style={{
-                  boxShadow: activeStep === i ? `0 8px 32px ${step.color}20, 6px 6px 12px rgba(0,0,0,0.45)` : '0 8px 18px rgba(3, 26, 54, 0.08)',
-                }}
-              >
-                {i < 4 && (
-                  <motion.div
-                    className="absolute -right-2 top-1/2 hidden h-0.5 w-4 -translate-y-1/2 lg:block"
-                    style={{ background: activeStep >= i ? step.color : 'rgba(255,255,255,0.08)' }}
-                    animate={{ opacity: activeStep >= i ? 1 : 0.3 }}
-                  />
-                )}
-
-                <div
-                  className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-all duration-300"
-                  style={{
-                    background: activeStep === i ? `${step.color}20` : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${activeStep === i ? step.color + '40' : 'rgba(255,255,255,0.06)'}`,
-                  }}
+            ].map((step, i) => {
+              const StepIcon = step.icon;
+              return (
+                <motion.article
+                  key={step.num}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.15 }}
+                  transition={{ duration: 0.45, delay: i * 0.07 }}
+                  onMouseEnter={() => setActiveStep(i)}
+                  className={`group relative flex min-h-[260px] flex-col rounded-[1.5rem] border bg-gradient-to-b from-[#1B2730] to-[#121B22] p-6 text-white transition-all duration-300 ${activeStep === i ? 'border-cyan/30 -translate-y-1 shadow-[0_16px_40px_rgba(0,0,0,0.25)]' : 'border-white/10 shadow-[0_10px_28px_rgba(0,0,0,0.16)]'}`}
                 >
-                  {step.icon}
-                </div>
-                <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.18em] text-white/45">{step.num}</div>
-                <h3 className="mb-2 text-base font-display font-semibold text-white">{step.title}</h3>
-                <p className="text-sm leading-relaxed text-white/70">{step.desc}</p>
-              </motion.div>
-            ))}
+                  <div className="mb-8 flex items-center justify-between">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 ${step.tone}`}>
+                      <StepIcon size={21} strokeWidth={1.8} />
+                    </div>
+                    <span className="font-mono text-xs font-medium tracking-[0.16em] text-[#84939E]">
+                      STEP {step.num}
+                    </span>
+                  </div>
+                  <h3 className="mb-3 text-lg font-display font-bold leading-snug text-white">{step.title}</h3>
+                  <p className="text-sm leading-relaxed text-[#A0AFBB]">{step.desc}</p>
+                  <div className={`mt-auto pt-6 ${i === 4 ? 'text-[#8BD4AE]' : 'text-[#73828D]'}`}>
+                    <div className="h-px w-full bg-white/10" />
+                    <span className="mt-4 block text-[10px] font-bold uppercase tracking-[0.16em]">
+                      {i === 4 ? 'Impact delivered' : 'Next · ' + String(i + 2).padStart(2, '0')}
+                    </span>
+                  </div>
+                </motion.article>
+              );
+            })}
           </div>
 
           <motion.p
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.9 }}
-            className="mt-10 text-center text-xs italic text-navy/50"
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.35 }}
+            className="mx-auto mt-10 max-w-2xl text-center text-xs leading-relaxed text-[#84939E]"
           >
             AI assists with coordination — it does not determine medical eligibility or transfusion decisions.
           </motion.p>
@@ -770,13 +771,15 @@ export default function Landing() {
         </div>
       </section>
 
-      <section id="privacy" className="bg-white px-6 py-24">
+      <section id="privacy" className="relative overflow-hidden border-t border-white/5 bg-[#080F15] px-6 py-24 md:py-28">
         <div className="mx-auto max-w-3xl">
           <FadeUp>
             <div className="mb-12 text-center">
-              <span className="mb-4 block text-xs font-medium uppercase tracking-[0.2em] text-[#c0182a]">FAQ</span>
-              <h2 className="text-4xl font-display font-bold text-navy md:text-5xl">Common questions.</h2>
-              <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-navy/60">
+              <span className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-alert/20 bg-alert/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#E08099]">
+                <Shield size={14} /> Trust, safety &amp; privacy
+              </span>
+              <h2 className="text-4xl font-display font-bold text-white md:text-5xl">Common questions.</h2>
+              <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[#A0AFBB]">
                 Clear answers about donating, verification, matching, and privacy on RakhtSetu.
               </p>
             </div>
@@ -790,19 +793,26 @@ export default function Landing() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.2 }}
                 transition={{ duration: 0.4, delay: index * 0.06 }}
-                className="overflow-hidden rounded-2xl border border-white/10 bg-[#031A36] shadow-[0_8px_24px_rgba(2,14,24,0.16)]"
+                className={`overflow-hidden rounded-2xl border transition-colors duration-200 ${openFAQ === index ? 'border-cyan/30 bg-[#1A252D] shadow-[0_12px_32px_rgba(0,0,0,0.22)]' : 'border-white/10 bg-[#121B22] hover:border-white/20 hover:bg-[#172129]'}`}
               >
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
+                  id={`faq-question-${index}`}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left sm:px-6"
                   onClick={() => setOpenFAQ(openFAQ === index ? null : index)}
                   aria-expanded={openFAQ === index}
+                  aria-controls={`faq-answer-${index}`}
                 >
-                  <span className="text-sm font-display font-semibold text-white md:text-base">{item.q}</span>
+                  <span className="flex min-w-0 items-center gap-4">
+                    <span className={`hidden font-mono text-xs tracking-wider sm:inline ${openFAQ === index ? 'text-cyan' : 'text-[#73828D]'}`}>
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="text-sm font-display font-semibold leading-relaxed text-white md:text-base">{item.q}</span>
+                  </span>
                   <motion.div
-                    animate={{ rotate: openFAQ === index ? 45 : 0 }}
+                    animate={{ rotate: openFAQ === index ? 180 : 0 }}
                     transition={{ duration: 0.2 }}
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-white/20 text-cyan"
+                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border transition-colors ${openFAQ === index ? 'border-cyan/30 bg-cyan/10 text-cyan' : 'border-white/15 text-[#A0AFBB]'}`}
                   >
                     <ChevronDown size={15} />
                   </motion.div>
@@ -814,9 +824,12 @@ export default function Landing() {
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.25 }}
+                      id={`faq-answer-${index}`}
+                      role="region"
+                      aria-labelledby={`faq-question-${index}`}
                     >
-                      <div className="border-t border-white/10 px-6 pb-5 pt-4">
-                        <p className="text-sm leading-relaxed text-[#7a9bc4]">{item.a}</p>
+                      <div className="border-t border-white/10 px-5 pb-6 pt-4 sm:px-6">
+                        <p className="pl-0 text-sm leading-relaxed text-[#B2BEC6] sm:pl-9">{item.a}</p>
                       </div>
                     </motion.div>
                   )}
@@ -911,7 +924,7 @@ export default function Landing() {
         <div className="mx-auto grid max-w-6xl gap-12 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <img src="/logo.png" alt="RakhtSetu logo" className="h-7 w-7 rounded-lg bg-white object-contain" />
+              <img src="/logo.png" alt="RakhtSetu logo" className="theme-preserve-white h-7 w-7 rounded-lg bg-white object-contain" />
               <span className="font-display text-lg font-extrabold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
             </Link>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">Connecting the right donor to the right need through a trusted community network.</p>

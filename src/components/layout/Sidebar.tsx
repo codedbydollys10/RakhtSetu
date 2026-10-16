@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 
 import { useApp } from "../../context/AppContext"
+import ThemeToggle from "../ui/ThemeToggle"
 
 const hospitalNav = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/hospital/dashboard" },
@@ -136,7 +137,6 @@ export default function Sidebar() {
 
   const donorTheme = role === "donor"
   const hospitalTheme = role === "hospital"
-  const darkTheme = role === "donor" || role === "hospital" || role === "ngo"
   const hospitalName =
     typeof roleDetails?.hospital_name === "string"
       ? roleDetails.hospital_name
@@ -161,7 +161,7 @@ export default function Sidebar() {
           collapsed ? "justify-center px-2" : ""
         }`}
       >
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+        <div className="theme-preserve-white flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
           <Droplets size={19} className="text-[#E51C3D]" strokeWidth={2.5} />
         </div>
         {!collapsed && (
@@ -169,17 +169,13 @@ export default function Sidebar() {
             <p className="font-display text-base font-bold leading-tight">
               <span className="text-[#E51C3D]">Rakht</span>
               <span
-                className={
-                  darkTheme ? "text-white" : "text-[#021734]"
-                }
+                className="text-(--text-primary)"
               >
                 Setu
               </span>
             </p>
             <p
-              className={`text-[10px] font-medium ${
-                darkTheme ? "text-white/60" : "text-[#64748B]"
-              }`}
+              className="text-[10px] font-medium text-(--text-secondary)"
             >
               {portalLabel}
             </p>
@@ -202,10 +198,10 @@ export default function Sidebar() {
               aria-label={collapsed ? label : undefined}
               aria-current={active ? "page" : undefined}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg mb-0.5 text-sm font-medium transition-all duration-150 ${
+              className={`flex items-center gap-3 mx-2 px-3 py-2 rounded-lg mb-0.5 text-sm font-medium transition-all duration-150 ${
                 active
                   ? "bg-[#E51C3D] text-white shadow-sm"
-                  : "text-white/65 hover:bg-white/10 hover:text-white"
+                  : "text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)"
               } ${collapsed ? "justify-center" : ""}`}
             >
               <Icon size={17} className="flex-shrink-0" />
@@ -221,8 +217,8 @@ export default function Sidebar() {
       </nav>
 
       {donorTheme && !collapsed && (
-        <div className="mx-3 mb-3 rounded-xl border border-white/10 bg-white/[0.06] p-3">
-          <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-white/80">
+        <div className="mx-3 mb-3 rounded-xl border border-(--border) bg-(--surface) p-3">
+          <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-(--text-primary)">
             <span
               className={`h-2 w-2 rounded-full ${
                 isDonorAvailable ? "bg-[#16A34A]" : "bg-[#9AA9B5]"
@@ -230,17 +226,17 @@ export default function Sidebar() {
             />
             {isDonorAvailable ? "You’re ready" : "Availability paused"}
           </p>
-          <p className="mt-1.5 text-[10px] leading-relaxed text-white/50">
+          <p className="mt-1.5 text-[10px] leading-relaxed text-(--text-secondary)">
             Your availability is visible to verified requests.
           </p>
           <Link
             to="/donor/availability"
-            className="mt-2 inline-flex rounded-md bg-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-white/15"
+            className="mt-2 inline-flex rounded-md bg-(--surface-hover) px-2.5 py-1.5 text-[10px] font-semibold text-(--text-primary)"
           >
             Update status
           </Link>
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <p className="text-[10px] font-semibold leading-relaxed text-white/75">
+          <div className="mt-3 border-t border-(--divider) pt-3">
+            <p className="text-[10px] font-semibold leading-relaxed text-(--text-secondary)">
               One donation. One connection. One more chance.
             </p>
             <Droplets size={12} className="mt-2 text-[#FF7184]" />
@@ -250,7 +246,7 @@ export default function Sidebar() {
 
       {/* User + Logout */}
       <div
-        className={`border-t border-white/10 p-3 ${
+        className={`border-t border-(--border) p-3 ${
           collapsed ? "flex flex-col items-center gap-2" : ""
         }`}
       >
@@ -265,16 +261,12 @@ export default function Sidebar() {
             </div>
             <div className="min-w-0">
               <p
-                className={`text-xs font-semibold truncate ${
-                  darkTheme ? "text-white" : "text-[#0F2742]"
-                }`}
+                className="text-xs font-semibold truncate text-(--text-primary)"
               >
                 {currentUser?.name || "Account"}
               </p>
               <p
-                className={`text-[10px] capitalize ${
-                  darkTheme ? "text-white/55" : "text-[#021734]/40"
-                }`}
+                className="text-[10px] capitalize text-(--text-secondary)"
               >
                 {hospitalTheme
                   ? "Hospital Admin"
@@ -283,24 +275,25 @@ export default function Sidebar() {
                     : role}
               </p>
               {hospitalTheme && (
-                <p className="max-w-40 truncate text-[9px] text-white/45">
+                <p className="max-w-40 truncate text-[9px] text-(--text-muted)">
                   {hospitalName}
                 </p>
               )}
             </div>
           </div>
         )}
-        <button
-          onClick={handleLogout}
-          className={`flex items-center gap-2 w-full px-3 py-2 text-xs rounded-lg transition-all ${
-            darkTheme
-              ? "text-white/55 hover:text-white hover:bg-white/10"
-              : "text-[#021734]/50 hover:text-red-600 hover:bg-red-50"
-          } ${collapsed ? "justify-center" : ""}`}
-        >
-          <LogOut size={14} />
-          {!collapsed && "Sign Out"}
-        </button>
+        <div className={`flex items-center gap-2 ${collapsed ? "flex-col" : ""}`}>
+          <button
+            onClick={handleLogout}
+            className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-xs text-(--text-secondary) transition-all hover:bg-(--surface-hover) hover:text-(--error) ${
+              collapsed ? "w-full justify-center" : ""
+            }`}
+          >
+            <LogOut size={14} />
+            {!collapsed && "Sign Out"}
+          </button>
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* Collapse toggle */}
@@ -308,7 +301,7 @@ export default function Sidebar() {
         onClick={() => setCollapsed((c) => !c)}
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         className={`hidden md:flex absolute -right-3 top-20 w-6 h-6 rounded-full items-center justify-center shadow-sm transition-colors ${
-          "border border-white/20 bg-[#182443] text-white/60 hover:text-white"
+          "border border-(--border) bg-(--surface-elevated) text-(--text-secondary) hover:text-(--text-primary)"
         }`}
       >
         {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
@@ -324,7 +317,7 @@ export default function Sidebar() {
           mobileOpen ? "Close navigation menu" : "Open navigation menu"
         }
         aria-expanded={mobileOpen}
-        className="fixed left-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-[#E51C3D] text-white shadow-lg md:hidden"
+        className="fixed left-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-(--brand) text-white shadow-lg md:hidden"
         onClick={() => setMobileOpen((o) => !o)}
       >
         {mobileOpen ? <X size={18} /> : <Menu size={18} />}
@@ -351,7 +344,7 @@ export default function Sidebar() {
             animate={{ x: 0 }}
             exit={{ x: -280 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed left-0 top-0 z-50 h-full w-[260px] rounded-r-[20px] border-r border-white/10 bg-[#031A36] shadow-xl md:hidden"
+            className="fixed left-0 top-0 z-50 h-full w-[260px] rounded-r-[20px] border-r border-(--border) bg-(--sidebar-bg) shadow-xl md:hidden"
           >
             <SidebarContent />
           </motion.aside>
@@ -362,7 +355,7 @@ export default function Sidebar() {
       <motion.aside
         animate={{ width: collapsed ? 72 : 260 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="relative sticky top-0 z-20 hidden h-screen flex-shrink-0 flex-col rounded-r-[20px] border-r border-white/10 bg-[#031A36] shadow-[4px_0_18px_rgba(3,26,54,0.07)] md:flex"
+        className="relative sticky top-0 z-20 hidden h-screen flex-shrink-0 flex-col rounded-r-[20px] border-r border-(--border) bg-(--sidebar-bg) shadow-[4px_0_18px_rgba(3,26,54,0.07)] md:flex"
       >
         <SidebarContent />
       </motion.aside>
