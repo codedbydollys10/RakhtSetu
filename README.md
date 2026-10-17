@@ -23,7 +23,7 @@
 
 ## 📌 Overview
 
-**RakhtSetu** is a community-driven blood donation coordination platform designed to connect **blood donors, hospitals, NGOs and volunteers** through a unified digital ecosystem.
+**Sahayog** is a community-driven blood donation coordination platform designed to connect **blood donors, hospitals, NGOs and volunteers** through a unified digital ecosystem.
 
 The platform helps hospitals create blood requirements, identify suitable donors, coordinate responses and manage operational information. Donors can manage their availability, receive blood requests and respond to them, while NGOs can support community-level coordination.
 
@@ -35,7 +35,7 @@ RakhtSetu focuses on making blood-donation coordination more organized, responsi
 
 ---
 
-# 🔄 How RakhtSetu Works
+# 🔄 How Sahayog Works
 
 ```mermaid
 flowchart TD
@@ -281,7 +281,7 @@ RakhtSetu
 | 💻 **Development Environment** | VS Code | Application development and debugging |
 # 🔐 Security
 
-RakhtSetu uses role-based access and database-level security mechanisms to separate functionality between different platform users.
+Sahayog uses role-based access and database-level security mechanisms to separate functionality between different platform users.
 
 ### Security Features
 
@@ -295,7 +295,7 @@ RakhtSetu uses role-based access and database-level security mechanisms to separ
 
 # 📊 Database
 
-RakhtSetu uses **Supabase PostgreSQL** for application data.
+Sahayog uses **Supabase PostgreSQL** for application data.
 
 ```text
 Users
@@ -483,7 +483,7 @@ Potential future improvements include:
 
 # ❤️ Impact
 
-RakhtSetu is designed around a simple idea:
+Sahayog is designed around a simple idea:
 
 > **When someone needs blood, finding the right donor should be faster and more coordinated.**
 
@@ -497,5 +497,5 @@ This project is developed for educational, research and project-development purp
 ---
 
 <p align="center">
-  <strong>🩸 RakhtSetu — Connect. Respond. Donate. Save Lives. ❤️</strong>
+  <strong>🩸 Sahayog — Connect. Respond. Donate. Save Lives. ❤️</strong>
 </p>
