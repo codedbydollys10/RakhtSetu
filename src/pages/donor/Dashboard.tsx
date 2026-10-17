@@ -887,7 +887,7 @@ export default function DonorDashboard() {
               Thank you for being part of your community.
             </p>
             <div className="mt-5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/50">
-              <Heart size={12} className="text-[#FF7184]" /> The RakhtSetu
+              <Heart size={12} className="text-[#FF7184]" /> The SAHAYOG
               community
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import BrandLogo from "../components/ui/BrandLogo";
+import ThemeToggle from "../components/ui/ThemeToggle";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
@@ -65,22 +66,22 @@ function NetworkVisual() {
   return (
     <div className="network-visual animate-network-float relative h-96 w-full max-w-140 mx-auto scale-[1.15]" aria-label="Connected blood network illustration">
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 560 390" fill="none" aria-hidden="true">
-        <path d="M116 87L280 195L444 87M132 312L280 195L444 312" stroke="#FFFFFF" strokeOpacity=".72" strokeWidth="2" strokeDasharray="7 7" />
-        <circle cx="280" cy="195" r="92" stroke="#6CC7D3" strokeOpacity=".16" strokeWidth="1" />
-        <circle cx="280" cy="195" r="70" stroke="#6CC7D3" strokeOpacity=".12" strokeWidth="1" />
+        <path className="network-connector" d="M116 87L280 195L444 87M132 312L280 195L444 312" stroke="#FFFFFF" strokeOpacity=".72" strokeWidth="2" strokeDasharray="7 7" />
+        <circle className="network-ring-outer" cx="280" cy="195" r="92" stroke="#6CC7D3" strokeOpacity=".16" strokeWidth="1" />
+        <circle className="network-ring-inner" cx="280" cy="195" r="70" stroke="#6CC7D3" strokeOpacity=".12" strokeWidth="1" />
       </svg>
 
       {nodes.map(({ label, status, icon: Icon, className }) => (
-        <div key={label} className={`absolute ${className} z-10 w-23 rounded-2xl border border-cyan/40 bg-bg/15 p-3 text-center shadow-lg backdrop-blur-md`}>
+        <div key={label} className={`network-node absolute ${className} z-10 w-23 rounded-2xl border border-cyan/40 bg-bg/15 p-3 text-center shadow-lg backdrop-blur-md`}>
           <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-cyan/25 text-bg"><Icon size={17} /></div>
           <p className="text-[11px] font-bold text-bg">{label}</p>
           <p className={`mt-1 text-[9px] ${status === "Low Stock" ? "text-warm" : "text-success"}`}>● {status}</p>
         </div>
       ))}
 
-      <div className="absolute left-1/2 top-1/2 z-20 flex h-23 w-23 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-alert/80 bg-alert/90 text-center shadow-[0_0_50px_rgba(255,49,95,.42)] backdrop-blur">
+      <div className="network-center-mark absolute left-1/2 top-1/2 z-20 flex h-23 w-23 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-alert/80 bg-alert/90 text-center shadow-[0_0_50px_rgba(255,49,95,.42)] backdrop-blur">
         <Droplets size={27} className="mb-1 text-bg" fill="currentColor" />
-        <span className="text-[9px] font-bold tracking-[.16em] text-bg/80">RAKHSETU</span>
+        <span className="text-[9px] font-bold tracking-[.16em] text-bg/80">SAHAYOG</span>
       </div>
 
       <div className="network-info-card absolute right-0 top-36.25 z-30 flex w-36.25 items-center gap-2 rounded-xl p-2.5 shadow-xl">
@@ -94,7 +95,7 @@ function NetworkVisual() {
         <p className="text-[9px] text-ink-soft/60">AIIMS Delhi · 3.8 km</p>
       </div>
 
-      <div className="absolute left-0 top-38.75 z-30 rounded-xl bg-deep-teal px-4 py-3 text-center shadow-xl">
+      <div className="network-active-stat absolute left-0 top-38.75 z-30 rounded-xl bg-deep-teal px-4 py-3 text-center shadow-xl">
         <p className="text-xl font-bold text-bg">847</p><p className="text-[9px] text-cyan">Active Donors</p>
       </div>
     </div>
@@ -142,7 +143,7 @@ function MobilePreview() {
             <div className="overflow-hidden rounded-[2rem] bg-[#F5F9FC] text-navy">
               <div className="flex items-center justify-between bg-[#E8F4F6] px-5 pb-3 pt-5 text-[9px] font-bold"><span>9:41</span><span className="h-1.5 w-8 rounded-full bg-navy/70" /></div>
               <div className="space-y-4 px-4 pb-5 pt-4">
-                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-alert text-white"><Droplets size={14} fill="currentColor" /></div><span className="font-display text-sm font-extrabold">RakhtSetu</span></div><Bell size={15} className="text-primary" /></div>
+                <div className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-alert text-white"><Droplets size={14} fill="currentColor" /></div><span className="font-display text-sm font-extrabold">SAHAYOG</span></div><Bell size={15} className="text-primary" /></div>
                 <div><p className="text-[9px] font-bold uppercase tracking-widest text-primary">Good evening, Aarav</p><h3 className="mt-1 text-lg font-display font-extrabold">Nearby Blood Requests</h3></div>
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="rounded-2xl bg-[#031A36] p-3 text-white shadow-lg"><div className="flex items-start justify-between"><div><p className="text-[9px] font-bold uppercase tracking-widest text-alert">Critical request</p><p className="mt-1 text-2xl font-display font-extrabold">O+</p></div><span className="rounded-full bg-alert/15 px-2 py-1 text-[9px] font-bold text-alert">4.2 km away</span></div><p className="mt-2 text-[10px] text-white/55">CityCare Hospital · 4 units needed</p></motion.div>
                 <div className="flex items-center justify-between rounded-2xl border border-cyan/20 bg-cyan/10 p-3"><div><p className="text-[9px] font-bold uppercase tracking-widest text-primary">Your status</p><p className="mt-1 text-xs font-bold">Available to Donate</p></div><ToggleRight size={29} className="text-success" /></div>
@@ -163,8 +164,8 @@ const faqItems = [
     a: "Eligible adults can register as donors and share their availability. Medical professionals make the final decision about donation eligibility.",
   },
   {
-    q: "Does RakhtSetu decide medical eligibility?",
-    a: "No. RakhtSetu supports coordination only. Medical eligibility, screening, and transfusion decisions remain with qualified healthcare professionals.",
+    q: "Does SAHAYOG decide medical eligibility?",
+    a: "No. SAHAYOG supports coordination only. Medical eligibility, screening, and transfusion decisions remain with qualified healthcare professionals.",
   },
   {
     q: "How are blood requests verified?",
@@ -176,7 +177,7 @@ const faqItems = [
   },
   {
     q: "How does donor matching work?",
-    a: "RakhtSetu prioritises potential contacts using coordination factors such as blood group, availability, approximate distance, donation interval, and response history.",
+    a: "SAHAYOG prioritises potential contacts using coordination factors such as blood group, availability, approximate distance, donation interval, and response history.",
   },
 ];
 
@@ -223,10 +224,10 @@ export default function Landing() {
       <nav className="fixed top-0 inset-x-0 z-50 bg-[#031A36] backdrop-blur border-b border-cyan/20">
         <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2 justify-self-start">
-            <BrandLogo />
-            <span className="font-display text-xl font-bold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
+            <BrandLogo className="h-10 w-10 shrink-0 object-cover sm:h-14 sm:w-14" />
+            <span className="font-display text-lg font-bold text-white sm:text-xl">SAHAYOG</span>
           </div>
-          <div className="hidden items-center justify-self-center gap-6 text-sm text-bg/70 md:flex">
+          <div className="hidden items-center justify-self-center gap-6 text-sm text-bg/70 xl:flex">
             <a href="#how" className="transition-colors hover:text-cyan">3D Anatomy</a>
             <a href="#roles" className="transition-colors hover:text-cyan">How It Works</a>
             <a href="#portals" className="transition-colors hover:text-cyan">Portals</a>
@@ -236,10 +237,17 @@ export default function Landing() {
             <a href="#privacy" className="transition-colors hover:text-cyan">FAQ</a>
             <a href="#cta" className="transition-colors hover:text-cyan">CTA</a>
           </div>
-          <div className="justify-self-end">
+          <div className="flex items-center gap-1 justify-self-end sm:gap-2">
+            <ThemeToggle />
+            <Link
+              to="/register"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-cyan/40 bg-cyan/15 px-2 py-2 text-xs font-medium text-bg transition-all hover:bg-cyan/25 sm:px-4 sm:py-3 sm:text-sm"
+            >
+              Sign up
+            </Link>
             <Link
               to="/signin"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-cyan/40 bg-cyan/15 px-6 py-3 text-sm font-medium text-bg transition-all hover:bg-cyan/25"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-cyan/40 bg-cyan/15 px-2 py-2 text-xs font-medium text-bg transition-all hover:bg-cyan/25 sm:px-6 sm:py-3 sm:text-sm"
             >
               Sign in
             </Link>
@@ -252,7 +260,7 @@ export default function Landing() {
         <div className="w-full">
           <div className="landing-hero min-h-[calc(100dvh-4rem)] overflow-hidden">
             <div className="relative grid lg:grid-cols-2 gap-8 px-8 md:px-14 pt-14 pb-0 items-center">
-              <div className="pb-14 lg:pb-14">
+              <div className="landing-hero-copy pb-14 lg:pb-14">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -266,7 +274,7 @@ export default function Landing() {
                     Connecting Donors<br /><span className="text-cyan">Saving Lives</span><br />Across India
                   </h1>
                   <p className="mb-8 mt-5 max-w-md text-lg leading-relaxed text-bg/75">
-                    RakhtSetu bridges verified blood donors, hospitals, and blood banks with intelligent matching technology — so no patient waits.
+                    SAHAYOG bridges verified blood donors, hospitals, and blood banks with intelligent matching technology — so no patient waits.
                   </p>
                   <div className="flex items-center gap-3 flex-wrap">
                     <a href="#how" className="flex items-center gap-2 rounded-xl border border-cyan/40 bg-cyan/15 px-6 py-3 font-medium text-bg transition-all hover:bg-cyan/25">
@@ -432,7 +440,7 @@ export default function Landing() {
               <Network size={14} /> A clear path from need to help
             </span>
             <h2 className="mt-6 text-4xl font-display font-bold leading-tight text-white md:text-6xl">
-              How RakhtSetu works
+              How SAHAYOG works
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-[#A0AFBB] md:text-lg">
               One trusted flow brings hospitals, donors and community partners together — with clarity at every step.
@@ -458,7 +466,7 @@ export default function Landing() {
               {
                 num: '03',
                 title: 'Potential Donors Matched',
-                desc: 'RakhtSetu prioritises potential donor contacts based on coordination factors including availability, proximity, and history.',
+                desc: 'SAHAYOG prioritises potential donor contacts based on coordination factors including availability, proximity, and history.',
                 icon: Search,
                 tone: 'text-cyan',
               },
@@ -613,7 +621,7 @@ export default function Landing() {
               One request. A coordinated response.
             </h2>
             <p className="mx-auto mt-5 max-w-lg text-lg text-navy/60">
-              See how RakhtSetu moves from requirement to potential donor contact.
+              See how SAHAYOG moves from requirement to potential donor contact.
             </p>
           </motion.div>
 
@@ -781,7 +789,7 @@ export default function Landing() {
               </span>
               <h2 className="text-4xl font-display font-bold text-white md:text-5xl">Common questions.</h2>
               <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[#A0AFBB]">
-                Clear answers about donating, verification, matching, and privacy on RakhtSetu.
+                Clear answers about donating, verification, matching, and privacy on SAHAYOG.
               </p>
             </div>
           </FadeUp>
@@ -854,26 +862,26 @@ export default function Landing() {
             </h2>
             <p className="mx-auto mt-5 max-w-3xl text-lg leading-relaxed text-navy/65">
               Healthcare professionals, donors, and community organizations across India trust
-              <span className="font-semibold text-primary"> RakhtSetu.</span>
+              <span className="font-semibold text-primary"> SAHAYOG.</span>
             </p>
           </div>
 
           <div className="mt-14 grid gap-8 md:grid-cols-3">
             {[
               {
-                quote: "RakhtSetu reduced our blood procurement time from 4 hours to under 20 minutes. It has genuinely saved lives in our ICU.",
+                quote: "SAHAYOG reduced our blood procurement time from 4 hours to under 20 minutes. It has genuinely saved lives in our ICU.",
                 initials: "SN",
                 name: "Dr. Suresh Nair",
                 title: "Head of Haematology, Apollo Hospitals",
               },
               {
-                quote: "I donated for the first time because of RakhtSetu's alert. The whole experience was transparent, tracked, and incredibly easy.",
+                quote: "I donated for the first time because of SAHAYOG's alert. The whole experience was transparent, tracked, and incredibly easy.",
                 initials: "AV",
                 name: "Aditi Verma",
                 title: "Verified Donor, Bengaluru",
               },
               {
-                quote: "Our NGO organized 12 donation camps this year using RakhtSetu. The drive management and volunteer coordination tools are exceptional.",
+                quote: "Our NGO organized 12 donation camps this year using SAHAYOG. The drive management and volunteer coordination tools are exceptional.",
                 initials: "RM",
                 name: "Rahul Mehta",
                 title: "Director, BloodConnect Foundation",
@@ -926,7 +934,7 @@ export default function Landing() {
           <div>
             <Link to="/" className="flex items-center gap-2">
               <BrandLogo className="h-12 w-auto shrink-0 object-contain" />
-              <span className="font-display text-lg font-extrabold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
+              <span className="font-display text-lg font-extrabold text-white">SAHAYOG</span>
             </Link>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">Connecting the right donor to the right need through a trusted community network.</p>
             <div className="mt-6 flex gap-2" aria-label="Social links">
@@ -939,14 +947,14 @@ export default function Landing() {
           </div>
           <div>
             <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan">Company</h3>
-            <div className="mt-5 space-y-3 text-sm text-white/65"><a href="#privacy" className="block hover:text-cyan">About RakhtSetu</a><a href="#privacy" className="block hover:text-cyan">Our Mission</a><a href="#privacy" className="block hover:text-cyan">Contact Us</a><Link to="/signin" className="block hover:text-cyan">Sign In</Link></div>
+            <div className="mt-5 space-y-3 text-sm text-white/65"><a href="#privacy" className="block hover:text-cyan">About SAHAYOG</a><a href="#privacy" className="block hover:text-cyan">Our Mission</a><a href="#privacy" className="block hover:text-cyan">Contact Us</a><Link to="/signin" className="block hover:text-cyan">Sign In</Link></div>
           </div>
           <div>
             <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan">Resources</h3>
             <div className="mt-5 space-y-3 text-sm text-white/65"><a href="#roles" className="block hover:text-cyan">For Hospitals</a><a href="#roles" className="block hover:text-cyan">For NGOs</a><a href="#roles" className="block hover:text-cyan">For Donors</a><a href="#privacy" className="block hover:text-cyan">Privacy & Trust</a></div>
           </div>
         </div>
-        <div className="mx-auto mt-12 flex max-w-6xl flex-col gap-4 border-t border-white/10 pt-6 text-xs text-white/55 md:flex-row md:items-center md:justify-between"><p>© 2026 RakhtSetu Health Technologies Pvt. Ltd. · Frontend demonstration</p><div className="flex gap-5"><a href="#privacy" className="hover:text-cyan">Privacy Policy</a><a href="#privacy" className="hover:text-cyan">Terms of Use</a><a href="#privacy" className="hover:text-cyan">Accessibility</a></div></div>
+        <div className="mx-auto mt-12 flex max-w-6xl flex-col gap-4 border-t border-white/10 pt-6 text-xs text-white/55 md:flex-row md:items-center md:justify-between"><p>© 2026 SAHAYOG · Frontend demonstration</p><div className="flex gap-5"><a href="#privacy" className="hover:text-cyan">Privacy Policy</a><a href="#privacy" className="hover:text-cyan">Terms of Use</a><a href="#privacy" className="hover:text-cyan">Accessibility</a></div></div>
       </footer>
 
     </div>

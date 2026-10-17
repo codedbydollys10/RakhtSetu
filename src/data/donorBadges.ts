@@ -189,7 +189,7 @@ export const donorBadgeDefinitions: BadgeDefinition[] = [
 
     name: "COMMUNITY CHAMPION",
 
-    description: "Made a strong contribution to the RakhtSetu donor community.",
+    description: "Made a strong contribution to the SAHAYOG donor community.",
 
     icon: "🌟",
 

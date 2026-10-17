@@ -42,7 +42,7 @@ const roleMedia: Record<Role, { title: string; description: string; assets: { pa
   donor: {
     title: "Every donation starts a connection.",
     description: "Your time and care can help someone take their next breath.",
-    assets: [{ path: "/login.mp4", label: "Donor welcome animation" }],
+    assets: [{ path: "/donor-welcome.mp4", label: "Donor welcome video" }],
   },
   hospital: {
     title: "Care moves faster when teams connect.",
@@ -110,7 +110,7 @@ export default function SignIn() {
       >
         <div className="flex items-center gap-2">
           <BrandLogo />
-          <span className="font-display text-xl font-bold"><span className="text-red-500">Rakht</span><span className="text-white">Setu</span></span>
+          <span className="auth-brand-name font-display text-xl font-bold text-white">SAHAYOG</span>
         </div>
         <div className="flex min-h-0 flex-1 flex-col justify-center py-8">
           <div className={`auth-media-frame mx-auto flex w-full max-w-175 items-center justify-center gap-2 ${activeMedia.assets.length > 1 ? "h-107.5" : "h-130"}`}>
@@ -143,10 +143,10 @@ export default function SignIn() {
             <ArrowLeft size={14} /> Back to home
           </Link>
 
-          <div className="rounded-[22px] border border-border bg-[#FBFCFD] p-4 shadow-[0_18px_45px_rgba(3,26,54,0.10),inset_0_1px_0_rgba(255,255,255,0.95)] sm:p-7">
+          <div className="auth-form-card rounded-[22px] border border-border bg-[#FBFCFD] p-4 shadow-[0_18px_45px_rgba(3,26,54,0.10),inset_0_1px_0_rgba(255,255,255,0.95)] sm:p-7">
             <div className="mb-6">
               <h1 className="text-3xl font-display font-bold tracking-[-0.02em] text-[#021734] mb-2">Welcome back</h1>
-              <p className="text-[#021734]/55 text-sm">Sign in to your RakhtSetu account</p>
+              <p className="text-[#021734]/55 text-sm">Sign in to your SAHAYOG account</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -209,7 +209,7 @@ export default function SignIn() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18),inset_0_1px_0_rgba(255,255,255,0.18)] transition hover:bg-ink-blue active:translate-y-0.5 active:shadow-[0_2px_0_#001126,0_4px_8px_rgba(3,26,54,0.16)] disabled:opacity-50 flex items-center justify-center gap-2"
+                className="auth-primary-action w-full rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18),inset_0_1px_0_rgba(255,255,255,0.18)] transition hover:bg-ink-blue active:translate-y-0.5 active:shadow-[0_2px_0_#001126,0_4px_8px_rgba(3,26,54,0.16)] disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
@@ -224,7 +224,7 @@ export default function SignIn() {
             </form>
 
             <p className="text-center text-sm text-[#021734]/50 mt-6">
-              New to RakhtSetu?{" "}
+              New to SAHAYOG?{" "}
               <Link to="/register" className="text-ink-blue font-medium hover:underline">
                 Register your organisation
               </Link>
