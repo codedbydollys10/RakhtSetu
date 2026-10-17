@@ -100,7 +100,7 @@ export default function DonorSettings() {
     <DashboardLayout>
       <PageHeader
         title="Donor Settings"
-        subtitle="Manage how RakhtSetu contacts you and what verified partners can see."
+        subtitle="Manage how SAHAYOG contacts you and what verified partners can see."
         actions={
           <button
             onClick={save}

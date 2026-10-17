@@ -94,7 +94,7 @@ const roleMedia: Record<Role, { title: string; description: string; assets: { pa
   donor: {
     title: "Every donation starts a connection.",
     description: "Your time and care can help someone take their next breath.",
-    assets: [{ path: "/login.mp4", label: "Donor welcome animation" }],
+    assets: [{ path: "/donor-welcome.mp4", label: "Donor welcome video" }],
   },
 
   hospital: {
@@ -885,8 +885,8 @@ export default function Register() {
       >
         <Link to="/" className="flex items-center gap-2">
           <BrandLogo />
-          <span className="font-display text-xl font-bold text-white">
-            RakhtSetu
+          <span className="auth-brand-name font-display text-xl font-bold text-white">
+            SAHAYOG
           </span>
         </Link>
         <div className="flex min-h-0 flex-1 flex-col justify-center py-8">
@@ -935,7 +935,7 @@ export default function Register() {
           >
             <ArrowLeft size={14} /> Back to sign in
           </Link>
-          <div className="rounded-[22px] border border-border bg-[#FBFCFD] p-4 shadow-[0_18px_45px_rgba(3,26,54,0.10),inset_0_1px_0_rgba(255,255,255,0.95)] sm:p-7">
+          <div className="auth-form-card rounded-[22px] border border-border bg-[#FBFCFD] p-4 shadow-[0_18px_45px_rgba(3,26,54,0.10),inset_0_1px_0_rgba(255,255,255,0.95)] sm:p-7">
             <div className="mb-6">
               <h1 className="mb-2 font-display text-3xl font-bold tracking-[-0.02em] text-[#021734]">
                 Create your account
@@ -952,9 +952,9 @@ export default function Register() {
                       type="button"
                       key={value}
                       onClick={() => setRoleChoice(value)}
-                      className={`flex w-full items-center gap-4 rounded-xl border-2 p-4 text-left transition-all ${
+                      className={`auth-role-choice flex w-full items-center gap-4 rounded-xl border-2 p-4 text-left transition-all ${
                         role === value
-                          ? "border-[#031A36] bg-[#EAF4F6] shadow-[inset_0_2px_4px_rgba(3,26,54,0.06)]"
+                          ? "auth-role-selected border-[#031A36] bg-[#EAF4F6] shadow-[inset_0_2px_4px_rgba(3,26,54,0.06)]"
                           : "border-border bg-white hover:border-ink-blue"
                       }`}
                     >
@@ -985,7 +985,7 @@ export default function Register() {
                   type="button"
                   disabled={!role}
                   onClick={() => setStep(1)}
-                  className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18)] transition hover:bg-ink-blue disabled:cursor-not-allowed disabled:opacity-40"
+                  className="auth-primary-action mt-6 flex w-full items-center justify-center rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18)] transition hover:bg-ink-blue disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Continue
                 </button>
@@ -1022,7 +1022,7 @@ export default function Register() {
                       ? setStep((current) => current + 1)
                       : finish()
                   }
-                  className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18)] transition hover:bg-ink-blue disabled:cursor-not-allowed disabled:opacity-40"
+                  className="auth-primary-action mt-6 flex w-full items-center justify-center rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18)] transition hover:bg-ink-blue disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {submitting ? "Creating account..." : step < totalSteps - 1 ? "Continue" : "Complete Registration"}
                 </button>
