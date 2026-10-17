@@ -136,7 +136,7 @@ flowchart TD
     A --> B["🩸 Select Blood Group"]
     B --> C["📦 Enter Required Units"]
     C --> D["📍 Specify Location"]
-    D --> E["⚙️ RakhtSetu Processes Request"]
+    D --> E["⚙️ Sahayog Processes Request"]
 
     E --> F["🔎 Find Suitable Donors"]
 
