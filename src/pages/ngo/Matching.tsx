@@ -37,12 +37,17 @@ export default function NGOMatching() {
 
   const [error, setError] = useState<string | null>(null)
 
-  const verifiedReqs = requests.filter((request) =>
+  const matchableRequests = requests.filter((request) =>
     [
+      "Verification Pending",
       "Verified",
+
       "Matching",
+
       "Donors Contacted",
+
       "Donor Confirmed",
+
       "Hospital Confirmation",
     ].includes(request.status),
   )
@@ -80,14 +85,18 @@ export default function NGOMatching() {
 
           setLoading(false)
         },
+
         (matchError: unknown) => {
           if (!active) return
+
           setError(
             matchError instanceof Error
               ? matchError.message
               : "Donor matches could not be loaded.",
           )
+
           setMatches([])
+
           setLoading(false)
         },
       )
@@ -101,7 +110,7 @@ export default function NGOMatching() {
     <DashboardLayout>
       <PageHeader
         title="Donor Matching"
-        subtitle="Eligible donors are notified automatically after your NGO verifies a request."
+        subtitle="Eligible donors are matched automatically for active requests."
       />
 
       {(requestFeedError || error) && (
@@ -114,24 +123,20 @@ export default function NGOMatching() {
             : `Donor matches could not be loaded: ${error}`}
         </p>
       )}
-
       <div className="grid gap-6 lg:grid-cols-2">
         <section>
           <h2 className="mb-3 text-sm font-semibold text-[#021734]">
-            Select a verified request
+            Select a request
           </h2>
           <div className="space-y-2">
-            {verifiedReqs.length === 0 ? (
+            {matchableRequests.length === 0 ? (
               <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-8 text-center">
                 <p className="text-sm text-[#021734]/50">
-                  No verified requests to match.
-                </p>
-                <p className="mt-1 text-xs text-[#021734]/30">
-                  Verify an assigned request first.
+                  No active requests are available to match.
                 </p>
               </div>
             ) : (
-              verifiedReqs.map((request) => (
+              matchableRequests.map((request) => (
                 <button
                   key={request.id}
                   onClick={() =>
@@ -171,8 +176,8 @@ export default function NGOMatching() {
           </h2>
           {!selectedReq ? (
             <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-6 text-center text-xs text-[#021734]/40">
-              Donors are matched using compatible blood groups, verified
-              eligibility, availability, consent, and approximate distance.
+              Donors are matched using blood-group compatibility, availability,
+              consent, recovery eligibility, and approximate distance.
             </div>
           ) : loading ? (
             <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-6 text-sm text-[#021734]/50">

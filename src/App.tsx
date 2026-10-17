@@ -38,8 +38,7 @@ import NGODashboard from "./pages/ngo/Dashboard"
 import NGODonors from "./pages/ngo/Donors"
 
 import NGORequests from "./pages/ngo/Requests"
-
-import NGOVerification from "./pages/ngo/Verification"
+import NGOContributions from "./pages/ngo/Contributions"
 
 import NGOMatching from "./pages/ngo/Matching"
 
@@ -245,12 +244,16 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/ngo/verification"
+        path="/ngo/contributions"
         element={
           <ProtectedRoute role="ngo">
-            <NGOVerification />
+            <NGOContributions />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/ngo/verification"
+        element={<Navigate to="/ngo/requests" replace />}
       />
       <Route
         path="/ngo/matching"

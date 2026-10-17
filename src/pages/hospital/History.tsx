@@ -9,12 +9,14 @@ import { UrgencyBadge } from "../../components/ui/Badge"
 import { useApp } from "../../context/AppContext"
 
 import { CheckCircle } from "lucide-react"
+import { isRequestFulfilled } from "../../lib/bloodRequestFulfillment"
 
 export default function HospitalHistory() {
   const { requests, hospitalRecordId } = useApp()
 
   const fulfilled = requests.filter(
-    (r) => r.hospitalId === hospitalRecordId && r.status === "Fulfilled",
+    (request) =>
+      request.hospitalId === hospitalRecordId && isRequestFulfilled(request),
   )
 
   return (
@@ -42,11 +44,6 @@ export default function HospitalHistory() {
               <p className="font-semibold text-[#021734] text-sm">
                 {req.bloodGroup} · {req.units} units
               </p>
-              {req.verifiedBy && (
-                <p className="text-xs text-[#036D7D] mt-0.5">
-                  Verified by {req.verifiedBy}
-                </p>
-              )}
               <p className="text-xs text-[#021734]/30 mt-1">
                 {new Date(req.createdAt).toLocaleDateString("en-IN", {
                   day: "numeric",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
-import { Check, UserRound } from "lucide-react"
+import { Check, MapPin, UserRound } from "lucide-react"
 
 import DashboardLayout, {
   PageHeader,
@@ -16,6 +16,10 @@ import {
 
 import type { BloodGroup } from "../../data/mockData"
 import { getDonorBadgeStats } from "../../data/donorBadges"
+import {
+  MapLocationPicker,
+  type Coordinates,
+} from "../../components/hospital/InteractiveMap"
 
 const bloodGroups: BloodGroup[] = [
   "O+",
@@ -27,6 +31,19 @@ const bloodGroups: BloodGroup[] = [
   "AB+",
   "AB-",
 ]
+
+function donorCoordinates(
+  values: DonorProfileEdits,
+): Coordinates | null {
+  if (
+    typeof values.latitude !== "number" ||
+    typeof values.longitude !== "number"
+  ) {
+    return null
+  }
+
+  return { latitude: values.latitude, longitude: values.longitude }
+}
 
 export default function DonorProfile() {
   const { donors, currentUser, roleDetails, requests } = useApp()
@@ -47,9 +64,27 @@ export default function DonorProfile() {
 
     city: profile.city ?? String(roleDetails?.city ?? donor?.city ?? ""),
 
-    area: profile.area ?? donor?.area ?? "",
+    area: profile.area ?? String(roleDetails?.area ?? donor?.area ?? ""),
 
-    emergencyContact: profile.emergencyContact ?? "",
+    emergencyContact:
+      profile.emergencyContact ??
+      String(roleDetails?.emergency_contact ?? ""),
+
+    latitude:
+      profile.latitude ??
+      (typeof roleDetails?.approximate_latitude === "number"
+        ? roleDetails.approximate_latitude
+        : null),
+
+    longitude:
+      profile.longitude ??
+      (typeof roleDetails?.approximate_longitude === "number"
+        ? roleDetails.approximate_longitude
+        : null),
+
+    mapLocation:
+      profile.mapLocation ??
+      String(roleDetails?.map_location ?? ""),
   }
 
   const badgeStats = useMemo(
@@ -69,8 +104,22 @@ export default function DonorProfile() {
 
   const [saved, setSaved] = useState(false)
 
+  const [saving, setSaving] = useState(false)
+
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const [location, setLocation] = useState<Coordinates | null>(
+    donorCoordinates(values),
+  )
+
+  const [mapLocation, setMapLocation] = useState(values.mapLocation ?? "")
+
   useEffect(
-    () => setDraft(values),
+    () => {
+      setDraft(values)
+      setLocation(donorCoordinates(values))
+      setMapLocation(values.mapLocation ?? "")
+    },
     [currentUser?.id, profile, roleDetails, donor],
   )
 
@@ -80,7 +129,7 @@ export default function DonorProfile() {
     setSaved(false)
   }
 
-  const save = (event: React.FormEvent) => {
+  const save = async (event: React.FormEvent) => {
     event.preventDefault()
 
     const nextErrors: Record<string, string> = {}
@@ -100,18 +149,41 @@ export default function DonorProfile() {
 
     if (Object.keys(nextErrors).length) return
 
-    updateProfile({
-      ...draft,
-      name: draft.name?.trim(),
-      city: draft.city?.trim(),
-      area: draft.area?.trim(),
-    })
+    if (!draft.bloodGroup) {
+      setErrors({ bloodGroup: "Select your blood group." })
+      return
+    }
 
-    setSaved(true)
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await updateProfile({
+        name: draft.name?.trim(),
+        phone: draft.phone?.trim(),
+        bloodGroup: draft.bloodGroup,
+        city: draft.city?.trim(),
+        area: draft.area?.trim(),
+        emergencyContact: draft.emergencyContact?.trim(),
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
+        mapLocation,
+      })
+      setSaved(true)
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Unable to save your donor profile.",
+      )
+    } finally {
+      setSaving(false)
+    }
   }
 
   const cancel = () => {
     setDraft(values)
+    setLocation(donorCoordinates(values))
+    setMapLocation(values.mapLocation ?? "")
     setErrors({})
     setSaved(false)
   }
@@ -120,7 +192,7 @@ export default function DonorProfile() {
     <DashboardLayout>
       <PageHeader
         title="My Profile"
-        subtitle="Keep your donor details current for verified coordination."
+        subtitle="Keep your donor details current for request coordination."
       />
       <form
         onSubmit={save}
@@ -184,6 +256,7 @@ export default function DonorProfile() {
             <select
               value={draft.bloodGroup ?? ""}
               onChange={(event) => change("bloodGroup", event.target.value)}
+              aria-invalid={Boolean(errors.bloodGroup)}
               className="mt-1.5 w-full rounded-lg border border-[#D8E3EA] bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-[#E51C3D]"
             >
               <option value="">Select blood group</option>
@@ -191,6 +264,11 @@ export default function DonorProfile() {
                 <option key={group}>{group}</option>
               ))}
             </select>
+            {errors.bloodGroup && (
+              <span className="mt-1 block text-[10px] text-[#C91836]">
+                {errors.bloodGroup}
+              </span>
+            )}
           </label>
           <label className="text-xs font-semibold text-[#062847]">
             City
@@ -229,11 +307,38 @@ export default function DonorProfile() {
               </span>
             )}
           </label>
+          <div className="sm:col-span-2">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#062847]">
+              <MapPin size={14} />
+              Approximate donation location
+            </div>
+            <MapLocationPicker
+              initialLocation={location}
+              initialAddress={mapLocation}
+              onChange={(value) => {
+                setLocation({
+                  latitude: value.latitude,
+                  longitude: value.longitude,
+                })
+                setMapLocation(value.address)
+              }}
+            />
+            <p className="mt-1 text-[10px] font-normal text-[#617587]">
+              This approximate location and your city are used to route nearby
+              requests. Your exact address is not shared with donors.
+            </p>
+          </div>
         </div>
         <p className="mt-4 rounded-lg bg-[#F5F8FA] p-3 text-[10px] leading-relaxed text-[#617587]">
-          Profile edits are saved in this browser for demo mode. Blood group and
-          location changes do not update your registration record on the server.
+          Your blood group and approximate location help hospitals route
+          requests. Your exact address and emergency contact are not shown to
+          other donors.
         </p>
+        {saveError && (
+          <p role="alert" className="mt-3 text-xs font-medium text-[#C91836]">
+            {saveError}
+          </p>
+        )}
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
@@ -244,9 +349,10 @@ export default function DonorProfile() {
           </button>
           <button
             type="submit"
-            className="rounded-lg bg-[#E51C3D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#C91836]"
+            disabled={saving}
+            className="rounded-lg bg-[#E51C3D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#C91836] disabled:cursor-wait disabled:opacity-60"
           >
-            Save changes
+            {saving ? "Saving…" : "Save changes"}
           </button>
           {saved && (
             <span
@@ -254,7 +360,7 @@ export default function DonorProfile() {
               className="flex items-center gap-1 text-xs font-semibold text-[#16803C]"
             >
               <Check size={14} />
-              Saved locally
+              Profile saved
             </span>
           )}
         </div>

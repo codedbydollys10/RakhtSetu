@@ -163,13 +163,15 @@ as $$
     select h.id, 'blood_bank', coalesce(h.blood_bank, h.hospital_name),
       h.latitude, h.longitude, h.available_blood_groups, true, h.city, h.verified
     from public.hospitals h
-    where h.blood_bank is not null and h.user_id <> auth.uid()
+    where h.blood_bank is not null
+      and h.blood_bank not like 'No blood bank%'
+      and h.user_id <> auth.uid()
       and h.latitude is not null and h.longitude is not null
     union all
-    select d.id, 'donor', 'Verified donor', d.approximate_latitude,
+    select d.id, 'donor', 'Donor', d.approximate_latitude,
       d.approximate_longitude, array[d.blood_group], d.available, d.city, d.verified
     from public.donors d
-    where d.available and d.verified and d.consent
+    where d.available and d.consent
       and d.approximate_latitude is not null and d.approximate_longitude is not null
     union all
     select n.id, 'ngo', n.organisation_name, n.latitude, n.longitude,

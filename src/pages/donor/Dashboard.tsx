@@ -25,36 +25,48 @@ import {
 } from "lucide-react"
 
 import DashboardLayout from "../../components/layout/DashboardLayout"
+
 import DonorImpactChart from "../../components/donor/DonorImpactChart"
 
-import {
-  demoDonationHistory,
-  distanceByArea,
-  donorRewards,
-  urgencyLabel,
-} from "../../data/donorDashboardData"
+import { donorRewards, urgencyLabel } from "../../data/donorDashboardData"
 
 import type { BloodGroup, BloodRequest, Urgency } from "../../data/mockData"
 
 import { useApp } from "../../context/AppContext"
+
 import { useDonorPortal } from "../../context/DonorPortalContext"
+
+import { useDonationHistory } from "../../hooks/useDonationHistory"
 
 const bloodGroups: BloodGroup[] = [
   "O+",
+
   "O-",
+
   "A+",
+
   "A-",
+
   "B+",
+
   "B-",
+
   "AB+",
+
   "AB-",
 ]
 
 const activeStatuses = new Set([
+  "Verification Pending",
+
   "Verified",
+
   "Matching",
+
   "Donors Contacted",
+
   "Donor Confirmed",
+
   "Hospital Confirmation",
 ])
 
@@ -67,7 +79,9 @@ function formatDate(value?: string | null) {
     ? value
     : date.toLocaleDateString("en-IN", {
         day: "numeric",
+
         month: "short",
+
         year: "numeric",
       })
 }
@@ -274,11 +288,6 @@ function RequestCard({
               >
                 {urgencyLabel[request.urgency]}
               </span>
-              {request.verifiedBy && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#16A34A]">
-                  <ShieldCheck size={12} /> Verified
-                </span>
-              )}
             </div>
             <h3 className="mt-2 font-display text-base font-bold text-[#021734]">
               {request.bloodGroup} blood required
@@ -295,7 +304,9 @@ function RequestCard({
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#617587]">
         <span className="inline-flex items-center gap-1">
           <MapPin size={13} />
-          {distanceByArea[request.area] ?? "Nearby"}
+          {request.distanceKm != null
+            ? `Approx. ${request.distanceKm} km`
+            : "Same city; exact distance unavailable"}
         </span>
         <span className="inline-flex items-center gap-1">
           <Clock3 size={13} />
@@ -304,8 +315,8 @@ function RequestCard({
       </div>
       {responded ? (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-[#ECFDF3] px-3 py-2.5 text-xs font-semibold text-[#16803C]">
-          <CheckCircle2 size={15} /> Response sent — the verified team has been
-          notified.
+          <CheckCircle2 size={15} /> Response sent — the coordination team has
+          been notified.
         </div>
       ) : (
         <div className="mt-4 flex gap-2">
@@ -383,7 +394,7 @@ function NearbyMap({ location }: { location: string }) {
       </span>
       <span
         className="absolute right-[19%] top-[54%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#16A34A] text-white shadow"
-        title="Verified hospital"
+        title="Hospital"
       >
         <ShieldCheck size={12} />
       </span>
@@ -400,7 +411,7 @@ function NearbyMap({ location }: { location: string }) {
         <span className="flex items-center gap-2">
           <i className="h-2 w-2 rounded-full bg-[#E51C3D]" />
           Requests <i className="h-2 w-2 rounded-full bg-[#16A34A]" />
-          Verified
+          Hospital
         </span>
       </div>
     </div>
@@ -423,17 +434,21 @@ export default function DonorDashboard() {
 
     requestFeedError,
   } = useApp()
+
   const donorPortal = useDonorPortal()
+
+  const donationHistory = useDonationHistory()
 
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
 
   const [availabilityMode, setAvailabilityMode] =
     useState<"available" | "temporary" | "unavailable">(
-      donorPortal.availabilityStatus ??
-        (donorPortal.available === false ? "unavailable" : "available"),
+      donorAvailability === true ? "available" : "unavailable",
     )
 
   const [savedUntil, setSavedUntil] = useState(donorPortal.availabilityUntil)
+  const [availabilityError, setAvailabilityError] = useState("")
+  const [availabilitySaving, setAvailabilitySaving] = useState(false)
 
   const [selectedRequest, setSelectedRequest] = useState<BloodRequest | null>(
     null,
@@ -459,16 +474,23 @@ export default function DonorDashboard() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
 
   useEffect(() => {
-    if (donorPortal.availabilityStatus)
-      setAvailabilityMode(donorPortal.availabilityStatus)
-    else if (donorPortal.available === false) setAvailabilityMode("unavailable")
-    else if (donorPortal.available === true) setAvailabilityMode("available")
+    if (donorAvailability !== null) {
+      setAvailabilityMode(
+        donorAvailability
+          ? "available"
+          : donorPortal.availabilityStatus === "temporary"
+            ? "temporary"
+            : "unavailable",
+      )
+    }
 
     setSavedUntil(donorPortal.availabilityUntil)
   }, [
     donorPortal.availabilityStatus,
+
     donorPortal.availabilityUntil,
-    donorPortal.available,
+
+    donorAvailability,
   ])
 
   const donorRecord = donors.find((donor) => donor.id === currentUser?.id)
@@ -492,10 +514,13 @@ export default function DonorDashboard() {
   const area = donorRecord?.area ?? ""
 
   const available =
-    donorPortal.available ??
     donorAvailability ??
+    (typeof roleDetails?.available === "boolean"
+      ? roleDetails.available
+      : undefined) ??
     donorRecord?.available ??
     false
+
   const donationCount =
     donorRecord?.donationsCount ??
     (Number(roleDetails?.donations_count ?? 0) || 0)
@@ -515,6 +540,7 @@ export default function DonorDashboard() {
           request.status !== "Fulfilled" &&
           !declinedIds.includes(request.id),
       ),
+
     [bloodGroup, declinedIds, hasBloodGroup, requests],
   )
 
@@ -527,15 +553,19 @@ export default function DonorDashboard() {
   )
 
   const nearbyRequests = requests
+
     .filter(
       (request) =>
         hasBloodGroup &&
         activeStatuses.has(request.status) &&
         request.status !== "Fulfilled" &&
         `${request.hospitalName} ${request.area}`
+
           .toLowerCase()
+
           .includes(nearbyQuery.toLowerCase()),
     )
+
     .slice(0, 4)
 
   const responses = requests.filter(
@@ -548,8 +578,11 @@ export default function DonorDashboard() {
       (request.matchedDonors?.includes(currentUser?.id ?? "") &&
         request.status === "Donor Confirmed"),
   )
+
   const respondedIds = donorPortal.responses
+
     .filter((response) => response.status !== "Cancelled")
+
     .map((response) => response.requestId)
 
   const communityDonors = donors.filter(
@@ -569,26 +602,41 @@ export default function DonorDashboard() {
   const reachedEstimate = donationCount * 3
 
   const openAvailability = () => {
-    const currentChoice =
-      donorPortal.availabilityStatus ??
-      (available ? "available" : availabilityMode)
+    const currentChoice = available
+      ? "available"
+      : availabilityMode === "temporary"
+        ? "temporary"
+        : "unavailable"
 
     setAvailabilityChoice(currentChoice)
+
     setSavedUntil(donorPortal.availabilityUntil)
+    setAvailabilityError("")
 
     setAvailabilityOpen(true)
   }
 
-  const saveAvailability = () => {
+  const saveAvailability = async () => {
     const nextAvailable = availabilityChoice === "available"
 
-    if (nextAvailable !== available && currentUser)
-      toggleDonorAvailability(currentUser.id)
+    setAvailabilitySaving(true)
+    setAvailabilityError("")
+    try {
+      if (nextAvailable !== available && currentUser)
+        await toggleDonorAvailability(currentUser.id)
 
-    setAvailabilityMode(availabilityChoice)
-    donorPortal.setAvailability(nextAvailable, savedUntil, availabilityChoice)
-
-    setAvailabilityOpen(false)
+      setAvailabilityMode(availabilityChoice)
+      donorPortal.setAvailability(nextAvailable, savedUntil, availabilityChoice)
+      setAvailabilityOpen(false)
+    } catch (error) {
+      setAvailabilityError(
+        error instanceof Error
+          ? error.message
+          : "Your availability could not be updated.",
+      )
+    } finally {
+      setAvailabilitySaving(false)
+    }
   }
 
   const confirmResponse = async () => {
@@ -602,10 +650,12 @@ export default function DonorDashboard() {
           ? error.message
           : "Unable to send your response.",
       )
+
       return
     }
 
     setToast("Your response was sent to the hospital.")
+
     window.setTimeout(() => setToast(""), 3500)
 
     setConfirmRequest(null)
@@ -616,119 +666,101 @@ export default function DonorDashboard() {
   return (
     <DashboardLayout>
       {requestFeedError && (
-        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+        >
           Requests could not be loaded: {requestFeedError}
         </p>
       )}
       <div className="w-full space-y-7 pb-8">
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.9fr)]">
-          <section className="flex w-full min-w-0 flex-col gap-5 rounded-[20px] border border-[#FFD1D9] bg-[#FFF1F3] px-5 py-5 shadow-[0_4px_18px_rgba(3,26,54,0.04)] md:flex-row md:items-center md:justify-between md:gap-6 md:px-7 md:py-6">
-            <div className="flex min-w-0 items-start gap-4">
-              <span
-                aria-hidden="true"
-                className="mt-1 h-12 w-1 shrink-0 rounded-full bg-[#E51C3D]"
-              />
+        <section className="flex w-full min-w-0 flex-col gap-5 rounded-[20px] border border-[#FFD1D9] bg-[#FFF1F3] px-5 py-5 shadow-[0_4px_18px_rgba(3,26,54,0.04)] md:flex-row md:items-center md:justify-between md:gap-6 md:px-7 md:py-6">
+          <div className="flex min-w-0 items-start gap-4">
+            <span
+              aria-hidden="true"
+              className="mt-1 h-12 w-1 shrink-0 rounded-full bg-[#E51C3D]"
+            />
+            <div className="min-w-0">
+              <h1 className="font-display text-[28px] font-extrabold leading-tight tracking-tight text-[#031A36] sm:text-[30px] xl:text-[34px]">
+                Good{" "}
+                {new Date().getHours() < 12
+                  ? "morning"
+                  : new Date().getHours() < 17
+                    ? "afternoon"
+                    : "evening"}
+                , {donorName.split(" ")[0]} <span aria-hidden="true">👋</span>
+              </h1>
+              <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-[#617587]">
+                Your readiness can help someone when they need it most.
+              </p>
+            </div>
+          </div>
+          <div className="relative grid min-w-0 grid-cols-1 gap-2.5 min-[420px]:grid-cols-2 md:flex md:shrink-0 md:items-center">
+            <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[#D8E3EA] bg-white px-3 py-2.5">
+              <MapPin size={15} className="text-[#E51C3D]" />
               <div className="min-w-0">
-                <h1 className="font-display text-[28px] font-extrabold leading-tight tracking-tight text-[#031A36] sm:text-[30px] xl:text-[34px]">
-                  Good{" "}
-                  {new Date().getHours() < 12
-                    ? "morning"
-                    : new Date().getHours() < 17
-                      ? "afternoon"
-                      : "evening"}
-                  , {donorName.split(" ")[0]} <span aria-hidden="true">👋</span>
-                </h1>
-                <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-[#617587]">
-                  Your readiness can help someone when they need it most.
+                <p className="text-xs font-bold text-[#021734]">
+                  {city || "Location not set"}
+                </p>
+                <p
+                  className={`mt-0.5 flex items-center gap-1 text-[10px] font-semibold ${
+                    available ? "text-[#16A34A]" : "text-[#617587]"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      available ? "bg-[#16A34A]" : "bg-[#9AA9B5]"
+                    }`}
+                  />
+                  {available ? "Available" : "Unavailable"}
                 </p>
               </div>
             </div>
-            <div className="relative grid min-w-0 grid-cols-1 gap-2.5 min-[420px]:grid-cols-2 md:flex md:shrink-0 md:items-center">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[#D8E3EA] bg-white px-3 py-2.5">
-                <MapPin size={15} className="text-[#E51C3D]" />
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-[#021734]">
-                    {city || "Location not set"}
-                  </p>
-                  <p
-                    className={`mt-0.5 flex items-center gap-1 text-[10px] font-semibold ${
-                      available ? "text-[#16A34A]" : "text-[#617587]"
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        available ? "bg-[#16A34A]" : "bg-[#9AA9B5]"
-                      }`}
-                    />
-                    {available ? "Available" : "Unavailable"}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                aria-expanded={profileMenuOpen}
-                aria-label={`${donorName}, donor profile menu`}
-                onClick={() => setProfileMenuOpen((open) => !open)}
-                className="flex min-w-0 items-center gap-3 rounded-xl border border-[#F4C8CF] bg-[#FFF6F7] px-3 py-2.5 text-left transition-colors hover:bg-[#FFF1F3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E51C3D]"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E51C3D] font-display text-base font-extrabold text-white shadow-sm">
-                  {donorName.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="min-w-0">
-                  <span className="block max-w-32 truncate text-xs font-bold text-[#021734]">
-                    {donorName}
-                  </span>
-                  <span className="block text-[10px] font-semibold text-[#C91836]">
-                    Donor
-                  </span>
-                </span>
-                <ChevronDown
-                  size={15}
-                  className={`text-[#C91836] transition-transform ${
-                    profileMenuOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {profileMenuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-2 w-48 rounded-xl border border-[#D8E3EA] bg-white p-2 shadow-[0_8px_24px_rgba(3,26,54,0.12)]">
-                  <Link
-                    to="/donor/profile"
-                    onClick={() => setProfileMenuOpen(false)}
-                    className="block rounded-lg px-3 py-2 text-xs font-semibold text-[#062847] hover:bg-[#F5F8FA]"
-                  >
-                    View profile
-                  </Link>
-                  <Link
-                    to="/donor/settings"
-                    onClick={() => setProfileMenuOpen(false)}
-                    className="block rounded-lg px-3 py-2 text-xs font-semibold text-[#062847] hover:bg-[#F5F8FA]"
-                  >
-                    Donor settings
-                  </Link>
-                </div>
-              )}
-            </div>
-          </section>
-          <section
-            aria-label="Donor inspiration video"
-            className="relative aspect-video min-w-0 overflow-hidden rounded-2xl border border-[#D8E3EA] bg-[#031A36] shadow-[0_8px_24px_rgba(3,26,54,0.12)] xl:aspect-auto xl:min-h-[190px]"
-          >
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              className="absolute inset-0 h-full w-full object-cover"
+            <button
+              type="button"
+              aria-expanded={profileMenuOpen}
+              aria-label={`${donorName}, donor profile menu`}
+              onClick={() => setProfileMenuOpen((open) => !open)}
+              className="flex min-w-0 items-center gap-3 rounded-xl border border-[#F4C8CF] bg-[#FFF6F7] px-3 py-2.5 text-left transition-colors hover:bg-[#FFF1F3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E51C3D]"
             >
-              <source src="/sounds/donor.mp4" type="video/mp4" />
-            </video>
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#031A36]/30 via-transparent to-transparent"
-            />
-          </section>
-        </div>
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#E51C3D] font-display text-base font-extrabold text-white shadow-sm">
+                {donorName.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="min-w-0">
+                <span className="block max-w-32 truncate text-xs font-bold text-[#021734]">
+                  {donorName}
+                </span>
+                <span className="block text-[10px] font-semibold text-[#C91836]">
+                  Donor
+                </span>
+              </span>
+              <ChevronDown
+                size={15}
+                className={`text-[#C91836] transition-transform ${
+                  profileMenuOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {profileMenuOpen && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-48 rounded-xl border border-[#D8E3EA] bg-white p-2 shadow-[0_8px_24px_rgba(3,26,54,0.12)]">
+                <Link
+                  to="/donor/profile"
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="block rounded-lg px-3 py-2 text-xs font-semibold text-[#062847] hover:bg-[#F5F8FA]"
+                >
+                  View profile
+                </Link>
+                <Link
+                  to="/donor/settings"
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="block rounded-lg px-3 py-2 text-xs font-semibold text-[#062847] hover:bg-[#F5F8FA]"
+                >
+                  Donor settings
+                </Link>
+              </div>
+            )}
+          </div>
+        </section>
 
         <section
           aria-label="Donor statistics"
@@ -800,22 +832,25 @@ export default function DonorDashboard() {
                 </div>
                 <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#617587]">
                   {available
-                    ? "Verified requests matching your registered blood group can reach you."
+                    ? "Matching requests for your registered blood group can reach you."
                     : "You won’t be shown to new matching requests until you update your availability."}
                 </p>
               </div>
               <span className="rounded-full bg-[#ECFDF3] px-3 py-1.5 text-[11px] font-semibold text-[#16803C]">
                 <ShieldCheck size={13} className="mr-1 inline" />
-                Verified coordination
+                Coordination active
               </span>
             </div>
             <div className="mt-6 grid gap-4 border-t border-[#D8E3EA] pt-5 sm:grid-cols-3">
               {[
                 ["Blood group", bloodGroup],
+
                 ["Last donation", formatDate(lastDonation)],
+
                 [
                   "Visibility",
-                  available ? "Public to verified requests" : "Hidden",
+
+                  available ? "Visible to matching requests" : "Hidden",
                 ],
               ].map(([label, value]) => (
                 <div key={label}>
@@ -883,8 +918,8 @@ export default function DonorDashboard() {
               </div>
             </div>
             <p className="mt-4 max-w-sm text-xs leading-relaxed text-white/65">
-              A verified request is a chance to make a meaningful connection.
-              Thank you for being part of your community.
+              A request is a chance to make a meaningful connection. Thank you
+              for being part of your community.
             </p>
             <div className="mt-5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/50">
               <Heart size={12} className="text-[#FF7184]" /> The SAHAYOG
@@ -902,7 +937,7 @@ export default function DonorDashboard() {
                 Emergency requests
               </h2>
               <p className="mt-1 text-xs text-[#617587]">
-                Verified requests that match your registered blood group.
+                Requests that match your registered blood group.
               </p>
             </div>
             <div className="flex gap-2">
@@ -959,8 +994,7 @@ export default function DonorDashboard() {
                   : "Add your blood group to see matching requests"}
               </p>
               <p className="mt-1 text-xs text-[#617587]">
-                We’ll show verified needs when they’re available in your
-                network.
+                We’ll show needs when they’re available in your network.
               </p>
             </div>
           )}
@@ -976,7 +1010,7 @@ export default function DonorDashboard() {
           <div className="rounded-2xl border border-[#D8E3EA] bg-white p-5 shadow-[0_2px_8px_rgba(3,26,54,0.035)]">
             <SectionHeading
               title="Nearby blood requests"
-              subtitle="A compact view of matching verified needs."
+              subtitle="A compact view of matching nearby needs."
               to="/donor/nearby"
             />
             <div className="relative mb-3">
@@ -1019,7 +1053,9 @@ export default function DonorDashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-[#617587]">
-                        {distanceByArea[request.area] ?? "Nearby"}
+                        {request.distanceKm != null
+                          ? `Approx. ${request.distanceKm} km`
+                          : "Same city; distance unavailable"}
                       </span>
                       <span
                         className={`rounded-full px-2 py-1 text-[9px] font-bold ${urgencyTone(request.urgency)}`}
@@ -1105,30 +1141,49 @@ export default function DonorDashboard() {
               subtitle="A record of your past contributions."
               to="/donor/history"
             />
-            <div className="mb-3 rounded-md bg-[#F5F8FA] px-3 py-2 text-[10px] text-[#617587]">
-              Illustrative demo entries — connect donation records to show
-              verified personal history.
-            </div>
             <div className="space-y-3">
-              {demoDonationHistory.map((entry) => (
-                <div key={entry.date} className="flex items-center gap-3">
+              {donationHistory.records.slice(0, 3).map((entry) => (
+                <div
+                  key={entry.donation_id}
+                  className="flex items-center gap-3"
+                >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FFF1F3] text-[#E51C3D]">
                     <Droplet size={16} fill="currentColor" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-[#021734]">
-                      {entry.hospital}
+                      {entry.hospital_name}
                     </p>
                     <p className="mt-0.5 text-[11px] text-[#617587]">
-                      {formatDate(entry.date)} · {entry.bloodGroup} ·{" "}
-                      {entry.units} unit
+                      {formatDate(entry.donated_at)} ·{" "}
+                      {entry.component.replace(/_/g, " ").toLowerCase()}
                     </p>
                   </div>
                   <span className="rounded-full bg-[#ECFDF3] px-2 py-1 text-[9px] font-bold text-[#16803C]">
-                    {entry.status}
+                    Confirmed
                   </span>
                 </div>
               ))}
+              {donationHistory.error && (
+                <p
+                  role="alert"
+                  className="py-4 text-center text-xs text-rose-700"
+                >
+                  Donation history could not be loaded: {donationHistory.error}
+                </p>
+              )}
+              {!donationHistory.loading &&
+                !donationHistory.error &&
+                donationHistory.records.length === 0 && (
+                  <p className="py-4 text-center text-xs text-[#617587]">
+                    No hospital-confirmed donation records yet.
+                  </p>
+                )}
+              {donationHistory.loading && (
+                <p className="py-4 text-center text-xs text-[#617587]">
+                  Loading donation history…
+                </p>
+              )}
             </div>
           </div>
         </section>
@@ -1143,10 +1198,14 @@ export default function DonorDashboard() {
             <div className="grid grid-cols-3 gap-2">
               {[
                 ["Ready", communityAvailable, "bg-[#ECFDF3] text-[#16803C]"],
+
                 ["Recently donated", "—", "bg-amber-50 text-amber-700"],
+
                 [
                   "Unavailable",
+
                   communityUnavailable,
+
                   "bg-[#F5F8FA] text-[#617587]",
                 ],
               ].map(([label, value, tone]) => (
@@ -1191,6 +1250,7 @@ export default function DonorDashboard() {
 
                 [
                   "Successful responses",
+
                   requests.filter(
                     (request) =>
                       request.status === "Fulfilled" &&
@@ -1256,29 +1316,46 @@ export default function DonorDashboard() {
       {availabilityOpen && (
         <ModalShell
           title="Update your availability"
-          description="Choose how verified organisations can reach you. This setting can be changed at any time."
+          description="Choose how organisations can reach you. This setting can be changed at any time."
           onClose={() => setAvailabilityOpen(false)}
         >
+          {availabilityError && (
+            <p
+              role="alert"
+              className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
+            >
+              {availabilityError}
+            </p>
+          )}
           <div className="space-y-2">
             {([
               [
                 "available",
+
                 "Available",
-                "Let verified requests matching my blood group reach me.",
+
+                "Let matching requests for my blood group reach me.",
+
                 "bg-[#16A34A]",
               ],
 
               [
                 "temporary",
+
                 "Temporarily unavailable",
+
                 "Pause new requests for now.",
+
                 "bg-amber-500",
               ],
 
               [
                 "unavailable",
+
                 "Not available",
+
                 "Hide my availability from new requests.",
+
                 "bg-[#9AA9B5]",
               ],
             ] as const).map(([value, label, details, dot]) => (
@@ -1327,9 +1404,10 @@ export default function DonorDashboard() {
             </button>
             <button
               onClick={saveAvailability}
+              disabled={availabilitySaving}
               className="rounded-lg bg-[#E51C3D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#C91836]"
             >
-              Save status
+              {availabilitySaving ? "Saving…" : "Save status"}
             </button>
           </div>
         </ModalShell>
@@ -1338,19 +1416,23 @@ export default function DonorDashboard() {
       {confirmRequest && (
         <ModalShell
           title="Respond to this request?"
-          description="You’re letting the verified hospital and coordination team know you may be able to help."
+          description="You’re letting the hospital and coordination team know you may be able to help."
           onClose={() => setConfirmRequest(null)}
         >
           <div className="space-y-3 rounded-xl bg-[#F5F8FA] p-4 text-xs">
             {[
               ["Hospital", confirmRequest.hospitalName],
+
               ["Blood group", confirmRequest.bloodGroup],
+
               [
                 "Units",
+
                 `${confirmRequest.units} ${
                   confirmRequest.units === 1 ? "unit" : "units"
                 }`,
               ],
+
               ["Location", `${confirmRequest.area}, ${city || "Mumbai"}`],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-3">
@@ -1391,14 +1473,14 @@ export default function DonorDashboard() {
           <div className="space-y-3 rounded-xl bg-[#F5F8FA] p-4 text-xs">
             {[
               ["Request ID", selectedRequest.id],
+
               ["Units needed", `${selectedRequest.units}`],
+
               ["Urgency", urgencyLabel[selectedRequest.urgency]],
+
               ["Location", `${selectedRequest.area}, ${city || "Mumbai"}`],
+
               ["Status", selectedRequest.status],
-              [
-                "Verification",
-                selectedRequest.verifiedBy || "Verified request",
-              ],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-3">
                 <span className="text-[#617587]">{label}</span>
@@ -1412,6 +1494,7 @@ export default function DonorDashboard() {
             <button
               onClick={() => {
                 setConfirmRequest(selectedRequest)
+
                 setSelectedRequest(null)
               }}
               className="mt-4 w-full rounded-lg bg-[#E51C3D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#C91836]"

@@ -2,7 +2,6 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Building2, Users, MessageSquare, Network, CheckCircle, Wifi, WifiOff } from "lucide-react";
 import DashboardLayout, { PageHeader } from "../../components/layout/DashboardLayout";
-import { VerificationBadge } from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { hospitals, ngos } from "../../context/AppContext";
 
@@ -28,7 +27,6 @@ export default function HospitalNetwork() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-semibold text-[#021734] text-sm">{h.name}</h3>
-                      {h.verified && <VerificationBadge type="Hospital" />}
                     </div>
                     <p className="text-xs text-[#021734]/50">{h.area}, {h.city}</p>
                     <div className="flex items-center gap-3 mt-2 text-xs flex-wrap">
@@ -66,7 +64,6 @@ export default function HospitalNetwork() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-semibold text-[#021734] text-sm">{n.name}</h3>
-                      {n.verified && <VerificationBadge type="NGO" />}
                     </div>
                     <p className="text-xs text-[#021734]/50">{n.area}, {n.city}</p>
                     <div className="flex items-center gap-3 mt-2 text-xs flex-wrap">

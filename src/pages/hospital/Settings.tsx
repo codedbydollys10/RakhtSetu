@@ -53,6 +53,8 @@ export default function HospitalSettings() {
     logout,
 
     updateHospitalLocation,
+
+    updateHospitalProfile,
   } = useApp()
 
   const storedCoords =
@@ -156,30 +158,18 @@ export default function HospitalSettings() {
 
     setMessage(null)
 
-    const { error: saveError } = await supabase
-
-      .from("hospitals")
-
-      .update({
-        hospital_name: profile.hospital_name.trim(),
-
-        hospital_type: profile.hospital_type.trim() || null,
-
-        street_address: profile.street_address.trim() || null,
-
-        city: profile.city.trim() || null,
-
-        phone: profile.phone.trim() || null,
-
-        email: profile.email.trim() || null,
-      })
-
-      .eq("user_id", currentUser.id)
-
-    if (saveError) setError(saveError.message)
-    else setMessage("Hospital profile saved.")
-
-    setSavingProfile(false)
+    try {
+      await updateHospitalProfile(profile)
+      setMessage("Hospital profile saved.")
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save the hospital profile.",
+      )
+    } finally {
+      setSavingProfile(false)
+    }
   }
 
   const savePreferences = async () => {
@@ -405,14 +395,6 @@ export default function HospitalSettings() {
                 "Critical request",
 
                 "Important updates for critical blood requirements.",
-              ],
-
-              [
-                "request_verification",
-
-                "Request verification",
-
-                "When a request is verified.",
               ],
 
               [

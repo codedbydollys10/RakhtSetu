@@ -1,4 +1,4 @@
-import { Network as NetworkIcon, ShieldCheck, UsersRound } from "lucide-react"
+import { Network as NetworkIcon, UsersRound } from "lucide-react"
 
 import DashboardLayout, {
   PageHeader,
@@ -23,9 +23,11 @@ export default function DonorNetwork() {
       (!bloodGroup || item.bloodGroup === bloodGroup),
   )
 
-  const verifiedRequests = requests.filter((request) => request.verifiedBy)
+  const coordinatedRequests = requests.filter(
+    (request) => request.status !== "Cancelled",
+  )
 
-  const activity = verifiedRequests.slice(0, 4)
+  const activity = coordinatedRequests.slice(0, 4)
 
   return (
     <DashboardLayout>
@@ -36,9 +38,9 @@ export default function DonorNetwork() {
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         {[
           {
-            title: "Verified donors",
+            title: "Donors in community",
             value: community.length,
-            icon: ShieldCheck,
+            icon: UsersRound,
             note: `${bloodGroup ?? "All groups"} network`,
           },
 
@@ -51,9 +53,9 @@ export default function DonorNetwork() {
 
           {
             title: "Community contributions",
-            value: verifiedRequests.length,
+            value: coordinatedRequests.length,
             icon: NetworkIcon,
-            note: "Verified requests coordinated",
+            note: "Requests coordinated",
           },
         ].map(({ title, value, icon: Icon, note }) => (
           <div
@@ -96,7 +98,7 @@ export default function DonorNetwork() {
                     </p>
                     <p className="mt-0.5 text-[10px] text-[#617587]">
                       {index % 2 === 0
-                        ? "Nearby verified network"
+                        ? "Nearby donor network"
                         : "Community donor"}
                     </p>
                   </div>
@@ -136,7 +138,7 @@ export default function DonorNetwork() {
             Community activity
           </h2>
           <p className="mt-1 text-xs text-[#617587]">
-            Recent verified coordination activity.
+            Recent request coordination activity.
           </p>
           <div className="mt-4 space-y-3">
             {activity.map((request) => (
@@ -145,18 +147,15 @@ export default function DonorNetwork() {
                 className="flex gap-3 rounded-xl bg-[#F5F8FA] p-3"
               >
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#16A34A]">
-                  <ShieldCheck size={15} />
+                  <NetworkIcon size={15} />
                 </span>
                 <div>
                   <p className="text-xs font-semibold text-[#021734]">
-                    Verified blood request coordinated
+                    Blood request coordinated
                   </p>
                   <p className="mt-1 text-[11px] text-[#617587]">
                     {request.bloodGroup} · {request.area} · {request.units}{" "}
                     units
-                  </p>
-                  <p className="mt-1 text-[10px] text-[#617587]">
-                    {request.verifiedBy}
                   </p>
                 </div>
               </div>

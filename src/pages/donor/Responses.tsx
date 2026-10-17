@@ -285,7 +285,7 @@ export default function DonorResponses() {
             </p>
             <p className="mt-3 rounded-lg bg-[#F5F8FA] p-3 text-xs text-[#617587]">
               {details.notes ||
-                "The verified hospital will share coordination details directly."}
+                "The hospital will share coordination details directly."}
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useState } from "react"
 
 import { motion } from "framer-motion"
 
@@ -17,18 +17,30 @@ export default function DonorAvailability() {
   const donorPortal = useDonorPortal()
 
   const me = donors.find((d) => d.id === currentUser?.id)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
 
   if (!currentUser) return null
 
-  const available =
-    donorPortal.available ?? donorAvailability ?? me?.available ?? false
+  const available = donorAvailability ?? me?.available ?? false
 
-  const toggleAvailability = () => {
+  const toggleAvailability = async () => {
     const next = !available
 
-    toggleDonorAvailability(currentUser.id)
-
-    donorPortal.setAvailability(next, donorPortal.availabilityUntil)
+    setSaving(true)
+    setError("")
+    try {
+      await toggleDonorAvailability(currentUser.id)
+      donorPortal.setAvailability(next, donorPortal.availabilityUntil)
+    } catch (toggleError) {
+      setError(
+        toggleError instanceof Error
+          ? toggleError.message
+          : "Your availability could not be updated.",
+      )
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -38,6 +50,14 @@ export default function DonorAvailability() {
         subtitle="Control when and how you appear to the matching system."
       />
       <div className="max-w-lg space-y-5">
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+          >
+            {error}
+          </p>
+        )}
         {/* Main toggle */}
         <div
           className={`rounded-xl p-6 ${
@@ -59,12 +79,16 @@ export default function DonorAvailability() {
                 }`}
               >
                 {available
-                  ? "You can be matched with verified blood requests from hospitals in your network."
+                  ? "You can be matched with blood requests from hospitals in your network."
                   : "Your profile is hidden from matching. No requests will be sent to you."}
               </p>
             </div>
             <button
               onClick={toggleAvailability}
+              disabled={saving}
+              aria-label={
+                available ? "Pause donor availability" : "Enable donor availability"
+              }
               className={`relative w-16 h-8 rounded-full transition-all duration-300 flex-shrink-0 ${
                 available ? "bg-[#1C8791]" : "bg-[#CECFD3]"
               }`}

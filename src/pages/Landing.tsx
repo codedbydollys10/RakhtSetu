@@ -58,7 +58,7 @@ function AnimatedStat({ value, label }: { value: string; label: string }) {
 function NetworkVisual() {
   const nodes = [
     { label: "Donor", status: "Available", icon: Users, className: "left-8 top-10" },
-    { label: "Hospital", status: "Verified", icon: Building2, className: "right-8 top-10" },
+    { label: "Hospital", status: "Registered", icon: Building2, className: "right-8 top-10" },
     { label: "NGO", status: "Active", icon: Heart, className: "left-14 bottom-14" },
     { label: "Blood Bank", status: "Low Stock", icon: Activity, className: "right-8 bottom-14" },
   ];
@@ -168,8 +168,8 @@ const faqItems = [
     a: "No. SAHAYOG supports coordination only. Medical eligibility, screening, and transfusion decisions remain with qualified healthcare professionals.",
   },
   {
-    q: "How are blood requests verified?",
-    a: "Requests are reviewed by the coordinating hospital or organisation before they are circulated to potential donors and network partners.",
+    q: "Do accounts or requests need verification?",
+    a: "No. The prototype does not require hospital, NGO, or donor verification. Requests are for coordination only; medical eligibility and donation decisions remain with qualified healthcare professionals.",
   },
   {
     q: "Is my exact location shared with other users?",
@@ -192,7 +192,7 @@ export default function Landing() {
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const selectedOrgan = ORGANS_LIST.find((organ) => organ.id === selectedOrganId) ?? ORGANS_LIST[0];
 
-  const flowStages = ["Requirement", "Verification", "Matching", "Donor Contact", "Response"];
+  const flowStages = ["Requirement", "Matching", "Donor Contact", "Response"];
   const matchingFactors = [
     { label: "Blood Group Match", value: 100, color: "#c0182a" },
     { label: "Availability", value: 92, color: "#22c55e" },
@@ -412,7 +412,7 @@ export default function Landing() {
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-4 gap-y-5 px-4 py-5 text-white sm:grid-cols-4 sm:gap-6 sm:px-6">
           {[
             { value: '1.2K+', label: 'Connected Donors' },
-            { value: '840', label: 'Verified Requests' },
+            { value: '840', label: 'Requests Coordinated' },
             { value: '148', label: 'Partner Hospitals' },
             { value: '64', label: 'Partner Organisations' },
           ].map(({ value, label }) => (
@@ -458,8 +458,8 @@ export default function Landing() {
               },
               {
                 num: '02',
-                title: 'Requirement Verified',
-                desc: 'The requirement is reviewed before wider circulation to ensure authenticity and details.',
+                title: 'Request Shared',
+                desc: 'The request is shared with nearby NGOs and eligible donors for coordination.',
                 icon: Shield,
                 tone: 'text-[#8BD4AE]',
               },
@@ -560,8 +560,8 @@ export default function Landing() {
               {
                 eyebrow: "For Donation Organizations",
                 title: "NGO Coordination Centre",
-                description: "Maintain active voluntary donor registries, audit incoming hospital requirements in the verification queue, and prevent double-outreach.",
-                points: ["Verification queue with document audit", "Duplicate Outreach Protection indicator", "Donor capacity & re-engagement tools"],
+                description: "Maintain active voluntary donor registries, coordinate incoming hospital requirements, and prevent double-outreach.",
+                points: ["Request coordination tools", "Duplicate Outreach Protection indicator", "Donor capacity & re-engagement tools"],
                 label: "Launch NGO Portal",
                 role: "ngo",
                 icon: Network,
@@ -570,7 +570,7 @@ export default function Landing() {
               {
                 eyebrow: "For Voluntary Donors",
                 title: "Voluntary Donor Experience",
-                description: "Simple, empowering mobile-first experience to control your donation readiness, receive only verified alerts, and track your community impact.",
+                description: "Simple, empowering mobile-first experience to control your donation readiness, receive matching alerts, and track your community impact.",
                 points: ["Instant Availability toggle & radius controls", "One-tap \"I Can Help\" response workflow", "Exact location masking & privacy protection"],
                 label: "Launch Donor Portal",
                 role: "donor",
@@ -635,7 +635,7 @@ export default function Landing() {
               <div className="mb-4 flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-[#c0182a] animate-pulse" />
                 <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#c0182a]">
-                  {initialRequests[0]?.status ?? 'Verified'} Request
+                  {initialRequests[0]?.status ?? 'Matching'} Request
                 </span>
               </div>
 
@@ -878,7 +878,7 @@ export default function Landing() {
                 quote: "I donated for the first time because of SAHAYOG's alert. The whole experience was transparent, tracked, and incredibly easy.",
                 initials: "AV",
                 name: "Aditi Verma",
-                title: "Verified Donor, Bengaluru",
+                title: "Donor, Bengaluru",
               },
               {
                 quote: "Our NGO organized 12 donation camps this year using SAHAYOG. The drive management and volunteer coordination tools are exceptional.",

@@ -8,7 +8,35 @@ alter table public.blood_requests
   add column if not exists latitude double precision,
   add column if not exists longitude double precision,
   add column if not exists location_address text,
+  add column if not exists hospital_contact_person text,
+  add column if not exists hospital_contact_phone text,
+  add column if not exists hospital_contact_email text,
+  add column if not exists verified_by uuid references public.ngos(id),
   add column if not exists fulfilled_at timestamptz;
+
+alter table public.hospitals
+  add column if not exists blood_bank text;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'hospitals'
+      and column_name = 'blood_bank'
+      and data_type = 'boolean'
+  ) then
+    alter table public.hospitals
+      alter column blood_bank type text
+      using case
+        when blood_bank is true then 'Full blood bank on-site'
+        when blood_bank is false then 'No blood bank — require external supply'
+        else null
+      end;
+  end if;
+end;
+$$;
 
 do $$
 begin
@@ -181,6 +209,20 @@ create policy "Hospitals can create requests"
         and h.user_id = auth.uid()
     )
   );
+
+drop policy if exists "Users can link their legacy hospital record"
+  on public.hospitals;
+create policy "Users can link their legacy hospital record"
+  on public.hospitals for update to authenticated
+  using (
+    id = auth.uid()
+    and user_id is null
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'hospital'
+    )
+  )
+  with check (id = auth.uid() and user_id = auth.uid());
 
 drop policy if exists "Hospitals can read their own requests"
   on public.blood_requests;

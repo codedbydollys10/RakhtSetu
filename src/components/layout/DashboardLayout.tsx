@@ -1,10 +1,9 @@
 import React from "react"
 
-import { useLocation } from "react-router-dom"
-
 import Sidebar from "./Sidebar"
-import { useApp } from "../../context/AppContext"
+
 import VascularBackground from "../ui/VascularBackground"
+import { useApp } from "../../context/AppContext"
 
 export default function DashboardLayout({
   children,
@@ -12,27 +11,14 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const { role } = useApp()
-  const location = useLocation()
-  const hospitalDashboard =
-    role === "hospital" && location.pathname === "/hospital/dashboard"
 
   return (
-    <div className="dashboard-shell relative isolate flex h-screen overflow-hidden">
+    <div
+      className="dashboard-shell relative isolate flex h-screen overflow-hidden"
+      data-portal={role}
+    >
       <Sidebar />
-      <main
-        className="dashboard-main relative min-w-0 flex-1 overflow-y-auto bg-transparent"
-        style={
-          hospitalDashboard
-            ? {
-                backgroundImage:
-                  "linear-gradient(var(--dashboard-image-overlay), var(--dashboard-image-overlay)), url('/sounds/hospital.jpg')",
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                backgroundAttachment: "fixed",
-              }
-            : undefined
-        }
-      >
+      <main className="dashboard-main relative min-w-0 flex-1 overflow-y-auto bg-transparent">
         <VascularBackground />
         <div className="dashboard-main-content relative z-10 min-h-full p-4 pt-14 md:p-6">
           {children}

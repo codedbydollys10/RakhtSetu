@@ -4,10 +4,15 @@ import { useLocation, useNavigate } from "react-router-dom"
 
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
+  Bell,
   CalendarClock,
   Droplets,
   Eye,
+  MapPin,
   Pencil,
+  Phone,
   Plus,
   Search,
   X,
@@ -20,6 +25,7 @@ import DashboardLayout, {
 import { useApp } from "../../context/AppContext"
 
 import type {
+  BloodComponent,
   BloodGroup,
   BloodRequest,
   RequestStatus,
@@ -31,14 +37,72 @@ import InteractiveNetworkMap, {
   type Coordinates,
 } from "../../components/hospital/InteractiveMap"
 
+import { supabase } from "../../lib/supabase"
+import {
+  filterAndSortHospitalRequests,
+  paginateHospitalRequests,
+  type HospitalRequestSort,
+} from "./hospitalAnalytics"
+import {
+  countValidUniqueDonorResponses,
+  MINIMUM_VALID_DONOR_RESPONSES,
+  requestDisplayStatus,
+} from "../../lib/bloodRequestFulfillment"
+
 const groups: BloodGroup[] = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"]
 
 const tabs = ["All", "Active", "In Progress", "Fulfilled", "Cancelled"] as const
 
 type RequestTab = typeof tabs[number]
 
+type HospitalDonorResponse = {
+  request_id: string
+  request_blood_group: string
+  request_component: string
+  request_area: string | null
+  donor_id: string
+  donor_name: string | null
+  donor_phone: string | null
+  donor_blood_group: string
+  donor_city: string | null
+  donor_area: string | null
+  response_status: string
+  responded_at: string
+  donation_recorded: boolean
+}
+
+type HospitalNgoResponse = {
+  response_id: string
+  ngo_id: string
+  ngo_name: string
+  organisation_type: string | null
+  city: string | null
+  areas_served: string | null
+  response_type: "potential_donor" | "unable_to_help"
+  response_status: string
+  potential_donor_count: number | null
+  coordinator_name: string | null
+  coordinator_phone: string | null
+  coordinator_email: string | null
+  contact_shared: boolean
+  expected_time: string | null
+  coordination_note: string | null
+  unable_reason: string | null
+  responded_at: string
+  updated_at: string
+}
+
+type HospitalNgoResponseCount = {
+  request_id: string
+  response_count: number
+}
+
 const emptyForm = {
   bloodGroup: "O+" as BloodGroup,
+
+  component: "WHOLE_BLOOD" as BloodComponent,
+
+  searchRadiusKm: 25,
 
   units: 1,
 
@@ -67,14 +131,6 @@ function isInProgress(status: RequestStatus) {
   ].includes(status)
 }
 
-function displayStatus(status: RequestStatus) {
-  if (status === "Fulfilled" || status === "Cancelled") return status
-
-  if (isInProgress(status)) return "In Progress"
-
-  return "Active"
-}
-
 function formatDate(value: string) {
   const date = new Date(value)
 
@@ -83,9 +139,43 @@ function formatDate(value: string) {
     : date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
 }
 
+function safePhoneHref(value: string) {
+  const normalized = value.trim()
+  return /^[+()\d.\-\s]+$/.test(normalized)
+    ? `tel:${encodeURIComponent(normalized.replace(/\s+/g, ""))}`
+    : null
+}
+
+function safeEmailHref(value: string) {
+  const normalized = value.trim()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
+    ? `mailto:${encodeURIComponent(normalized)}`
+    : null
+}
+
+function getRequestSaveErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+
+  if (error && typeof error === "object") {
+    const fields = error as Record<string, unknown>
+    const message = typeof fields.message === "string" ? fields.message : null
+    const details = typeof fields.details === "string" ? fields.details : null
+    const hint = typeof fields.hint === "string" ? fields.hint : null
+    const code = typeof fields.code === "string" ? fields.code : null
+    const diagnostic = [details, hint, code ? `Code: ${code}` : null]
+      .filter(Boolean)
+      .join(" ")
+
+    if (message) return diagnostic ? `${message} ${diagnostic}` : message
+  }
+
+  return "Unable to save this request. Check the browser console for the database error details."
+}
+
 export default function HospitalRequests() {
   const {
     requests,
+    notifications,
 
     currentUser,
 
@@ -102,6 +192,8 @@ export default function HospitalRequests() {
     updateHospitalRequest,
 
     updateHospitalRequestDetails,
+
+    refreshHospitalRequests,
   } = useApp()
 
   const location = useLocation()
@@ -150,6 +242,28 @@ export default function HospitalRequests() {
 
   const [search, setSearch] = useState("")
 
+  const [sortBy, setSortBy] = useState<HospitalRequestSort>("createdAt")
+
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+
+  const [page, setPage] = useState(0)
+
+  const [pageSize, setPageSize] = useState(10)
+
+  const [responseCounts, setResponseCounts] = useState<Record<string, number>>(
+    {},
+  )
+
+  const [responseCountsError, setResponseCountsError] = useState<string | null>(
+    null,
+  )
+
+  const [ngoResponseCounts, setNgoResponseCounts] =
+    useState<Record<string, number>>({})
+
+  const [ngoResponseCountsError, setNgoResponseCountsError] =
+    useState<string | null>(null)
+
   const [selected, setSelected] = useState<string | null>(
     new URLSearchParams(location.search).get("request"),
   )
@@ -175,6 +289,59 @@ export default function HospitalRequests() {
 
   const [notice, setNotice] = useState<string | null>(null)
 
+  const [donationCandidates, setDonationCandidates] =
+    useState<HospitalDonorResponse[]>([])
+
+  const [ngoResponses, setNgoResponses] = useState<HospitalNgoResponse[]>([])
+
+  const [ngoResponsesLoading, setNgoResponsesLoading] = useState(false)
+
+  const [ngoResponsesError, setNgoResponsesError] = useState<string | null>(
+    null,
+  )
+
+  const [ngoCoordinationBusy, setNgoCoordinationBusy] = useState<string | null>(
+    null,
+  )
+
+  const [acknowledgementDraft, setAcknowledgementDraft] = useState<{
+    responseId: string
+    recipientName: string
+    messageType: "ngo_appreciation" | "donor_acknowledgement"
+    content: string
+    savedId?: string
+  } | null>(null)
+
+  const [acknowledgementError, setAcknowledgementError] =
+    useState<string | null>(null)
+
+  const [acknowledgementBusy, setAcknowledgementBusy] = useState(false)
+
+  const [donationCandidatesLoading, setDonationCandidatesLoading] =
+    useState(false)
+
+  const [responseAcknowledgementBusy, setResponseAcknowledgementBusy] =
+    useState<string | null>(null)
+
+  const [donationAcknowledgementError, setDonationAcknowledgementError] =
+    useState<string | null>(null)
+
+  const [donationAcknowledgementBusy, setDonationAcknowledgementBusy] =
+    useState<string | null>(null)
+
+  const [donationComponent, setDonationComponent] =
+    useState<BloodComponent>("WHOLE_BLOOD")
+
+  const [donationDateTime, setDonationDateTime] = useState(() => {
+    const localDate = new Date(
+      Date.now() - new Date().getTimezoneOffset() * 60000,
+    )
+
+    return localDate.toISOString().slice(0, 16)
+  })
+
+  const [donationVolumeMl, setDonationVolumeMl] = useState("")
+
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("request")
 
@@ -194,23 +361,538 @@ export default function HospitalRequests() {
     [requests, hospitalRecordId],
   )
 
-  const visibleRequests = ownRequests.filter((request) => {
-    const state = displayStatus(request.status)
+  const filteredRequests = useMemo(
+    () =>
+      filterAndSortHospitalRequests(
+        ownRequests,
+        tab,
+        search,
+        sortBy,
+        sortDirection,
+      ),
+    [ownRequests, tab, search, sortBy, sortDirection],
+  )
 
-    const matchesTab = tab === "All" || state === tab
+  const pagination = useMemo(
+    () => paginateHospitalRequests(filteredRequests, page, pageSize),
+    [filteredRequests, page, pageSize],
+  )
 
-    const matchesSearch =
-      !search ||
-      `${request.id} ${request.bloodGroup} ${request.department ?? ""}`
-
-        .toLowerCase()
-
-        .includes(search.toLowerCase())
-
-    return matchesTab && matchesSearch
-  })
+  const visibleRequests = pagination.items
 
   const selectedRequest = ownRequests.find((request) => request.id === selected)
+  const customRadius = ![5, 10, 25].includes(form.searchRadiusKm)
+
+  useEffect(() => {
+    setPage(0)
+  }, [tab, search, sortBy, sortDirection, pageSize])
+
+  useEffect(() => {
+    let active = true
+
+    if (!ownRequests.length) {
+      setResponseCounts({})
+      setResponseCountsError(null)
+      return
+    }
+
+    const loadResponseCounts = async () => {
+      setResponseCountsError(null)
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_hospital_donor_responses",
+          { p_request_id: null },
+        )
+        if (!active) return
+        if (error) {
+          setResponseCountsError(error.message)
+          return
+        }
+
+        const requestIds = new Set(ownRequests.map((request) => request.id))
+        const responsesByRequest = new Map<string, HospitalDonorResponse[]>()
+        for (const response of (data ?? []) as HospitalDonorResponse[]) {
+          if (!requestIds.has(response.request_id)) continue
+          const rows = responsesByRequest.get(response.request_id) ?? []
+          rows.push(response)
+          responsesByRequest.set(response.request_id, rows)
+        }
+        const counts = Object.fromEntries(
+          [...responsesByRequest].map(([requestId, rows]) => [
+            requestId,
+            countValidUniqueDonorResponses(rows),
+          ]),
+        )
+        setResponseCounts(counts)
+      } catch (error: unknown) {
+        if (active) {
+          setResponseCounts({})
+          setResponseCountsError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load saved donor response counts.",
+          )
+        }
+      }
+    }
+
+    void loadResponseCounts()
+    const interval = window.setInterval(loadResponseCounts, 30000)
+
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [ownRequests.map((request) => request.id).join("|")])
+
+  useEffect(() => {
+    let active = true
+
+    if (!ownRequests.length) {
+      setNgoResponseCounts({})
+      setNgoResponseCountsError(null)
+      return
+    }
+
+    const loadNgoResponseCounts = async () => {
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_hospital_ngo_response_counts",
+        )
+        if (!active) return
+        const requestIds = new Set(ownRequests.map((request) => request.id))
+        const counts: Record<string, number> = {}
+        if (!error) {
+          for (const response of (data ?? []) as HospitalNgoResponseCount[]) {
+            if (!requestIds.has(response.request_id)) continue
+            counts[response.request_id] = response.response_count
+          }
+        } else {
+          const fallbackCounts = await Promise.all(
+            ownRequests.map(async (request) => {
+              const result = await supabase.rpc("get_hospital_ngo_responses", {
+                p_request_id: request.id,
+              })
+              if (result.error) throw result.error
+              return [request.id, (result.data ?? []).length] as const
+            }),
+          )
+          if (!active) return
+          for (const [requestId, responseCount] of fallbackCounts) {
+            counts[requestId] = responseCount
+          }
+        }
+        setNgoResponseCounts(counts)
+        setNgoResponseCountsError(null)
+      } catch (error: unknown) {
+        if (!active) return
+        setNgoResponseCounts({})
+        setNgoResponseCountsError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load saved NGO response counts.",
+        )
+      }
+    }
+
+    void loadNgoResponseCounts()
+    const interval = window.setInterval(loadNgoResponseCounts, 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [ownRequests.map((request) => request.id).join("|")])
+
+  useEffect(() => {
+    if (!selectedRequest) {
+      setDonationCandidates([])
+
+      setDonationAcknowledgementError(null)
+
+      return
+    }
+
+    let active = true
+
+    setDonationCandidatesLoading(true)
+
+    setDonationAcknowledgementError(null)
+
+    setDonationComponent(selectedRequest.component ?? "WHOLE_BLOOD")
+
+    const loadCandidates = async () => {
+      const { data, error } = await supabase.rpc(
+        "get_hospital_donor_responses",
+
+        { p_request_id: selectedRequest.id },
+      )
+
+      if (!active) return
+
+      if (error) {
+        setDonationAcknowledgementError(error.message)
+
+        setDonationCandidates([])
+      } else {
+        setDonationCandidates(data ?? [])
+      }
+
+      setDonationCandidatesLoading(false)
+    }
+
+    const refreshCandidates = () => {
+      void loadCandidates().catch((loadError: unknown) => {
+        if (!active) return
+
+        setDonationAcknowledgementError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load confirmed donor responses.",
+        )
+
+        setDonationCandidates([])
+
+        setDonationCandidatesLoading(false)
+      })
+    }
+
+    refreshCandidates()
+    const interval = window.setInterval(refreshCandidates, 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [selectedRequest?.id])
+
+  useEffect(() => {
+    if (!selectedRequest) {
+      setNgoResponses([])
+      setNgoResponsesError(null)
+      setAcknowledgementDraft(null)
+      return
+    }
+
+    let active = true
+    const loadResponses = async () => {
+      setNgoResponsesLoading(true)
+      setNgoResponsesError(null)
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_hospital_ngo_responses",
+          { p_request_id: selectedRequest.id },
+        )
+        if (!active) return
+        if (error) throw error
+        setNgoResponses((data ?? []) as HospitalNgoResponse[])
+      } catch (loadError) {
+        if (!active) return
+        setNgoResponses([])
+        setNgoResponsesError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load NGO responses.",
+        )
+      } finally {
+        if (active) setNgoResponsesLoading(false)
+      }
+    }
+    void loadResponses()
+    const interval = window.setInterval(() => void loadResponses(), 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [selectedRequest?.id])
+
+  const acknowledgeResponse = async (donorId: string) => {
+    if (!selectedRequest) return
+
+    setResponseAcknowledgementBusy(donorId)
+    setDonationAcknowledgementError(null)
+    try {
+      const { error } = await supabase.rpc("confirm_hospital_donor_response", {
+        p_request_id: selectedRequest.id,
+        p_donor_id: donorId,
+      })
+      if (error) throw error
+
+      const { data, error: refreshError } = await supabase.rpc(
+        "get_hospital_donor_responses",
+        { p_request_id: selectedRequest.id },
+      )
+      if (refreshError) {
+        setDonationAcknowledgementError(
+          `Response acknowledged, but donor details could not be refreshed: ${refreshError.message}`,
+        )
+      } else {
+        setDonationCandidates((data ?? []) as HospitalDonorResponse[])
+      }
+      try {
+        await refreshHospitalRequests()
+      } catch (refreshError) {
+        setDonationAcknowledgementError(
+          `Response acknowledged, but request summaries could not be refreshed: ${
+            refreshError instanceof Error
+              ? refreshError.message
+              : "Unknown refresh error."
+          }`,
+        )
+      }
+    } catch (responseError) {
+      setDonationAcknowledgementError(
+        responseError instanceof Error
+          ? responseError.message
+          : "Unable to acknowledge this donor response.",
+      )
+    } finally {
+      setResponseAcknowledgementBusy(null)
+    }
+  }
+
+  const acknowledgeDonation = async (donorId: string) => {
+    if (!selectedRequest) return
+    if (
+      !window.confirm(
+        "Confirm that this donor's requested blood donation has actually been completed at your hospital? This records a verified donation and cannot be inferred from a response.",
+      )
+    )
+      return
+
+    const donatedAt = new Date(donationDateTime)
+
+    if (Number.isNaN(donatedAt.getTime()) || donatedAt > new Date()) {
+      setDonationAcknowledgementError("Enter a valid donation date and time.")
+
+      return
+    }
+
+    const volume = donationVolumeMl ? Number(donationVolumeMl) : null
+
+    if (volume !== null && (!Number.isInteger(volume) || volume <= 0)) {
+      setDonationAcknowledgementError(
+        "Donation volume must be a positive number of millilitres.",
+      )
+
+      return
+    }
+
+    setDonationAcknowledgementBusy(donorId)
+    setDonationAcknowledgementError(null)
+    let donationRecorded = false
+    try {
+      const { error: acknowledgementError } = await supabase.rpc(
+        "acknowledge_blood_donation",
+
+        {
+          p_request_id: selectedRequest.id,
+
+          p_donor_id: donorId,
+
+          p_component: donationComponent,
+
+          p_donated_at: donatedAt.toISOString(),
+
+          p_volume_ml: volume,
+        },
+      )
+
+      if (acknowledgementError) {
+        setDonationAcknowledgementError(acknowledgementError.message)
+
+        return
+      }
+
+      donationRecorded = true
+
+      const { data, error } = await supabase.rpc(
+        "get_hospital_donor_responses",
+
+        { p_request_id: selectedRequest.id },
+      )
+
+      if (error) {
+        setDonationAcknowledgementError(
+          `Donation was recorded, but the donor response list could not be refreshed: ${error.message}`,
+        )
+      } else {
+        setDonationCandidates((data ?? []) as HospitalDonorResponse[])
+      }
+      try {
+        await refreshHospitalRequests()
+      } catch (refreshError) {
+        setDonationAcknowledgementError(
+          `Donation recorded, but request details could not be refreshed: ${
+            refreshError instanceof Error
+              ? refreshError.message
+              : "Unknown refresh error."
+          }`,
+        )
+      }
+    } catch (acknowledgementError) {
+      setDonationAcknowledgementError(
+        donationRecorded
+          ? `Donation recorded, but follow-up data could not be loaded: ${
+              acknowledgementError instanceof Error
+                ? acknowledgementError.message
+                : "Unknown refresh error."
+            }`
+          : acknowledgementError instanceof Error
+            ? acknowledgementError.message
+            : "Unable to record this donation.",
+      )
+    } finally {
+      setDonationAcknowledgementBusy(null)
+    }
+  }
+
+  const updateNgoCoordination = async (
+    responseId: string,
+    status: "Coordination in Progress" | "Donation Verified",
+  ) => {
+    setNgoCoordinationBusy(responseId)
+    setNgoResponsesError(null)
+    try {
+      const { error } = await supabase.rpc("update_hospital_ngo_coordination", {
+        p_response_id: responseId,
+        p_status: status,
+      })
+      if (error) throw error
+      const { data, error: loadError } = await supabase.rpc(
+        "get_hospital_ngo_responses",
+        { p_request_id: selectedRequest?.id },
+      )
+      if (loadError) throw loadError
+      setNgoResponses((data ?? []) as HospitalNgoResponse[])
+    } catch (updateError) {
+      setNgoResponsesError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Unable to update NGO coordination.",
+      )
+    } finally {
+      setNgoCoordinationBusy(null)
+    }
+  }
+
+  const draftNgoAppreciation = (response: HospitalNgoResponse) => {
+    if (!selectedRequest || !response.contact_shared) return
+    const hospitalName =
+      (typeof roleDetails?.hospital_name === "string" &&
+        roleDetails.hospital_name) ||
+      currentUser?.name ||
+      "Our hospital"
+    const coordinator = response.coordinator_name || "Coordinator"
+    const note = response.coordination_note
+      ? ` Your coordination note was: ${response.coordination_note}`
+      : ""
+    setAcknowledgementError(null)
+    setAcknowledgementDraft({
+      responseId: response.response_id,
+      recipientName: response.ngo_name,
+      messageType: "ngo_appreciation",
+      content: `Dear ${response.ngo_name} and ${coordinator}, thank you for supporting ${hospitalName} with request ${selectedRequest.id} for ${selectedRequest.bloodGroup} ${selectedRequest.component ?? "WHOLE_BLOOD"} (${selectedRequest.units} units). Your NGO identified ${response.potential_donor_count ?? 0} potential donor(s)${
+        response.expected_time
+          ? ` and offered to coordinate ${response.expected_time}`
+          : ""
+      }.${note} We appreciate your coordination. Please note this message acknowledges your offer and does not certify a completed donation.`,
+    })
+  }
+
+  const draftDonorAcknowledgement = async (
+    candidate: HospitalDonorResponse,
+  ) => {
+    if (!selectedRequest || !candidate.donation_recorded) return
+    setAcknowledgementError(null)
+    try {
+      const { data, error } = await supabase
+        .from("donation_records")
+        .select("donated_at")
+        .eq("request_id", selectedRequest.id)
+        .eq("donor_id", candidate.donor_id)
+        .maybeSingle()
+      if (error) throw error
+      if (!data?.donated_at) {
+        throw new Error("Verified donation date is unavailable.")
+      }
+      const hospitalName =
+        (typeof roleDetails?.hospital_name === "string" &&
+          roleDetails.hospital_name) ||
+        currentUser?.name ||
+        "Our hospital"
+      const donationDate = formatDate(data.donated_at)
+      setAcknowledgementDraft({
+        responseId: candidate.donor_id,
+        recipientName: candidate.donor_name || "Donor",
+        messageType: "donor_acknowledgement",
+        content: `Dear ${candidate.donor_name || "Donor"}, thank you for your blood donation to ${hospitalName} on ${donationDate}. Your generosity helped support request ${selectedRequest.id} (${selectedRequest.bloodGroup}). We are grateful for your contribution.`,
+      })
+    } catch (draftError) {
+      setAcknowledgementError(
+        draftError instanceof Error
+          ? draftError.message
+          : "Unable to prepare the donor acknowledgement.",
+      )
+    }
+  }
+
+  const saveAcknowledgement = async () => {
+    if (!selectedRequest || !acknowledgementDraft) return
+    setAcknowledgementBusy(true)
+    setAcknowledgementError(null)
+    try {
+      const { data, error } = await supabase.rpc(
+        "save_hospital_acknowledgement",
+        {
+          p_request_id: selectedRequest.id,
+          p_response_id: acknowledgementDraft.responseId,
+          p_message_type: acknowledgementDraft.messageType,
+          p_recipient_name: acknowledgementDraft.recipientName,
+          p_content: acknowledgementDraft.content,
+        },
+      )
+      if (error) throw error
+      if (typeof data !== "string") {
+        throw new Error("The approved acknowledgement was not saved.")
+      }
+      setAcknowledgementDraft((draft) =>
+        draft ? { ...draft, savedId: data } : null,
+      )
+    } catch (saveError) {
+      setAcknowledgementError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save the approved acknowledgement.",
+      )
+    } finally {
+      setAcknowledgementBusy(false)
+    }
+  }
+
+  const copyAcknowledgement = async () => {
+    if (!acknowledgementDraft?.savedId) return
+    try {
+      await navigator.clipboard.writeText(acknowledgementDraft.content)
+      const { error } = await supabase.rpc(
+        "mark_hospital_acknowledgement_copied",
+        { p_acknowledgement_id: acknowledgementDraft.savedId },
+      )
+      if (error) {
+        setAcknowledgementError(
+          `Message was copied, but the copy status could not be recorded: ${error.message}`,
+        )
+        return
+      }
+      setAcknowledgementError(
+        "Copied. This message has not been sent; use your configured email or SMS channel to deliver it.",
+      )
+    } catch (copyError) {
+      setAcknowledgementError(
+        copyError instanceof Error
+          ? `Unable to copy the message: ${copyError.message}`
+          : "Unable to copy the message. Your browser may not permit clipboard access.",
+      )
+    }
+  }
 
   const openEdit = (request: BloodRequest) => {
     setEditing(request.id)
@@ -225,6 +907,10 @@ export default function HospitalRequests() {
 
     setForm({
       bloodGroup: request.bloodGroup,
+
+      component: request.component ?? "WHOLE_BLOOD",
+
+      searchRadiusKm: request.searchRadiusKm ?? 25,
 
       units: request.units,
 
@@ -293,6 +979,14 @@ export default function HospitalRequests() {
       }
 
       if (
+        !Number.isInteger(form.searchRadiusKm) ||
+        form.searchRadiusKm < 5 ||
+        form.searchRadiusKm > 50
+      ) {
+        throw new Error("Choose a donor search radius from 5 to 50 km.")
+      }
+
+      if (
         !form.area.trim() &&
         !requestLocationAddress.trim() &&
         !requestLocation &&
@@ -310,11 +1004,20 @@ export default function HospitalRequests() {
       const values = {
         bloodGroup: form.bloodGroup,
 
+        component: form.component,
+
+        searchRadiusKm: form.searchRadiusKm,
+
         units,
 
         urgency: form.urgency,
 
-        area: form.area.trim(),
+        area:
+          form.area.trim() ||
+          requestLocationAddress.trim() ||
+          (typeof roleDetails?.city === "string"
+            ? roleDetails.city.trim()
+            : ""),
 
         department: form.department.trim(),
 
@@ -349,12 +1052,7 @@ export default function HospitalRequests() {
         )
       }
     } catch (saveError) {
-      const message =
-        saveError instanceof Error
-          ? saveError.message
-          : "Unable to save this request."
-
-      setError(message)
+      setError(getRequestSaveErrorMessage(saveError))
     } finally {
       setSaving(false)
     }
@@ -393,6 +1091,25 @@ export default function HospitalRequests() {
 
   const fulfillRequest = async (request: BloodRequest) => {
     if (!isInProgress(request.status)) return
+    const validResponseCount =
+      countValidUniqueDonorResponses(donationCandidates)
+    const verifiedDonationCount = new Set(
+      donationCandidates
+        .filter((candidate) => candidate.donation_recorded)
+        .map((candidate) => candidate.donor_id),
+    ).size
+    const hasVerifiedDonation = verifiedDonationCount >= request.units
+    if (
+      !hasVerifiedDonation ||
+      validResponseCount < MINIMUM_VALID_DONOR_RESPONSES
+    ) {
+      setDonationAcknowledgementError(
+        hasVerifiedDonation
+          ? `Donation recorded, but fulfilment requires at least one valid unique donor response; currently ${validResponseCount}. The request remains open for review.`
+          : `Fulfilment requires at least one valid unique donor response and hospital-verified donations for all ${request.units} requested unit(s).`,
+      )
+      return
+    }
 
     if (!window.confirm(`Mark request ${request.id} as fulfilled?`)) return
 
@@ -411,13 +1128,38 @@ export default function HospitalRequests() {
     }
   }
 
+  const selectedValidResponseCount =
+    countValidUniqueDonorResponses(donationCandidates)
+  const selectedVerifiedDonationCount = new Set(
+    donationCandidates
+      .filter((candidate) => candidate.donation_recorded)
+      .map((candidate) => candidate.donor_id),
+  ).size
+  const fulfillmentReady =
+    selectedValidResponseCount >= MINIMUM_VALID_DONOR_RESPONSES &&
+    selectedVerifiedDonationCount >= (selectedRequest?.units ?? 0)
+  const ownRequestIds = useMemo(
+    () => new Set(ownRequests.map((request) => request.id)),
+    [ownRequests],
+  )
+  const responseNotifications = notifications
+    .filter(
+      (notification) =>
+        notification.requestId &&
+        ownRequestIds.has(notification.requestId) &&
+        (notification.type.startsWith("donor_response_") ||
+          notification.type.startsWith("ngo_potential_donor_") ||
+          notification.type.startsWith("ngo_unable_to_help_")),
+    )
+    .slice(0, 5)
+
   return (
     <DashboardLayout>
       <PageHeader
         title={initialCreate ? "Post Blood Requirement" : "My Requests"}
         subtitle={
           initialCreate
-            ? "Submit a hospital blood requirement for verification."
+            ? "Submit a hospital blood requirement for immediate coordination."
             : "Review and manage blood requests created by your hospital."
         }
         actions={
@@ -469,6 +1211,61 @@ export default function HospitalRequests() {
 
       {!initialCreate && (
         <>
+          <section
+            aria-labelledby="request-response-notifications"
+            className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2
+                  id="request-response-notifications"
+                  className="flex items-center gap-2 text-sm font-bold text-[#101A36]"
+                >
+                  <Bell size={16} className="text-[#036D7D]" />
+                  Response notifications
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Saved donor and NGO responses to your requests. Updates
+                  refresh periodically.
+                </p>
+              </div>
+            </div>
+            {responseNotifications.length ? (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {responseNotifications.map((notification) => (
+                  <li
+                    key={notification.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-800">
+                        {notification.title}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        {notification.body}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {formatDate(notification.timestamp)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelected(notification.requestId ?? null)
+                      }
+                      className="shrink-0 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-[#036D7D] hover:bg-slate-50"
+                    >
+                      View request
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">
+                No donor or NGO response notifications for your requests yet.
+              </p>
+            )}
+          </section>
           <div className="mb-5 flex flex-wrap items-center gap-3">
             <label className="relative min-w-52 flex-1">
               <Search
@@ -498,20 +1295,76 @@ export default function HospitalRequests() {
               ))}
             </div>
           </div>
-          <div className="mb-3 flex gap-2">
-            {(["list", "map"] as const).map((mode) => (
+          {responseCountsError && (
+            <p
+              role="alert"
+              className="mb-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-700"
+            >
+              Saved donor response counts could not be loaded:{" "}
+              {responseCountsError}
+            </p>
+          )}
+          {ngoResponseCountsError && (
+            <p
+              role="alert"
+              className="mb-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-700"
+            >
+              Saved NGO response counts could not be loaded:{" "}
+              {ngoResponseCountsError}
+            </p>
+          )}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-500">
+                Sort by
+                <select
+                  value={sortBy}
+                  onChange={(event) =>
+                    setSortBy(event.target.value as HospitalRequestSort)
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+                >
+                  <option value="createdAt">Created date</option>
+                  <option value="urgency">Urgency</option>
+                  <option value="bloodGroup">Blood group</option>
+                  <option value="status">Status</option>
+                </select>
+              </label>
               <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`rounded-lg px-4 py-2 text-xs font-semibold capitalize ${
-                  viewMode === mode
-                    ? "bg-[#101A36] text-white"
-                    : "border border-slate-200 bg-white text-slate-600"
+                type="button"
+                onClick={() =>
+                  setSortDirection((value) =>
+                    value === "asc" ? "desc" : "asc",
+                  )
+                }
+                aria-label={`Sort ${
+                  sortDirection === "asc" ? "descending" : "ascending"
                 }`}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
               >
-                {mode} View
+                {sortDirection === "asc" ? (
+                  <ArrowUp size={14} />
+                ) : (
+                  <ArrowDown size={14} />
+                )}
+                {sortDirection === "asc" ? "Ascending" : "Descending"}
               </button>
-            ))}
+            </div>
+            <div className="flex gap-2">
+              {(["list", "map"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold capitalize ${
+                    viewMode === mode
+                      ? "bg-[#101A36] text-white"
+                      : "border border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  {mode} View
+                </button>
+              ))}
+            </div>
           </div>
           {viewMode === "map" ? (
             <InteractiveNetworkMap
@@ -519,7 +1372,7 @@ export default function HospitalRequests() {
               hospitalLocation={registeredLocation}
               hospitalName={currentUser?.name ?? "Hospital"}
               mode="requests"
-              requests={visibleRequests}
+              requests={filteredRequests}
               onViewRequest={setSelected}
             />
           ) : (
@@ -532,6 +1385,8 @@ export default function HospitalRequests() {
                         "Request ID",
 
                         "Blood Group",
+
+                        "Component",
 
                         "Units",
 
@@ -555,7 +1410,7 @@ export default function HospitalRequests() {
                     {hospitalRequestsLoading &&
                       Array.from({ length: 4 }, (_, index) => (
                         <tr key={index}>
-                          {Array.from({ length: 8 }, (_, cell) => (
+                          {Array.from({ length: 9 }, (_, cell) => (
                             <td key={cell} className="px-4 py-4">
                               <span className="block h-4 animate-pulse rounded bg-slate-100" />
                             </td>
@@ -584,18 +1439,37 @@ export default function HospitalRequests() {
                             <td className="px-4 py-4 font-bold text-[#E11D48]">
                               {request.bloodGroup}
                             </td>
+                            <td className="px-4 py-4 text-xs text-slate-600">
+                              {(request.component ?? "WHOLE_BLOOD").replace(
+                                /_/g,
+                                " ",
+                              )}
+                            </td>
                             <td className="px-4 py-4">{request.units}</td>
                             <td className="px-4 py-4">{request.urgency}</td>
                             <td className="px-4 py-4">
                               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                {request.status}
+                                {requestDisplayStatus(request)}
                               </span>
                             </td>
                             <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-500">
                               {formatDate(request.createdAt)}
                             </td>
                             <td className="px-4 py-4">
-                              {request.matchedDonors?.length ?? 0}
+                              <div
+                                aria-label={`NGO: ${ngoResponseCounts[request.id] ?? 0}, Donor: ${request.validDonorResponseCount ?? responseCounts[request.id] ?? 0}`}
+                                className="flex flex-wrap gap-x-3 gap-y-1 whitespace-nowrap text-xs"
+                              >
+                                <span className="font-semibold text-[#036D7D]">
+                                  NGO: {ngoResponseCounts[request.id] ?? 0}
+                                </span>
+                                <span className="font-semibold text-slate-600">
+                                  DONOR:{" "}
+                                  {request.validDonorResponseCount ??
+                                    responseCounts[request.id] ??
+                                    0}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-2">
@@ -631,7 +1505,7 @@ export default function HospitalRequests() {
                     {!hospitalRequestsLoading &&
                       visibleRequests.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-6 py-14 text-center">
+                          <td colSpan={9} className="px-6 py-14 text-center">
                             <Droplets
                               className="mx-auto mb-3 text-rose-300"
                               size={28}
@@ -659,6 +1533,57 @@ export default function HospitalRequests() {
                       )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+          {viewMode === "list" && filteredRequests.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+              <div className="flex items-center gap-3">
+                <span>
+                  Showing {pagination.page * pagination.pageSize + 1}–
+                  {Math.min(
+                    (pagination.page + 1) * pagination.pageSize,
+                    pagination.total,
+                  )}{" "}
+                  of {pagination.total}
+                </span>
+                <label className="flex items-center gap-2">
+                  Rows
+                  <select
+                    value={pagination.pageSize}
+                    onChange={(event) =>
+                      setPageSize(Number(event.target.value))
+                    }
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1.5"
+                  >
+                    {[10, 25, 50].map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={pagination.page === 0}
+                  onClick={() => setPage(pagination.page - 1)}
+                  className="rounded-md border border-slate-200 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {pagination.page + 1} of {pagination.pageCount}
+                </span>
+                <button
+                  type="button"
+                  disabled={pagination.page + 1 >= pagination.pageCount}
+                  onClick={() => setPage(pagination.page + 1)}
+                  className="rounded-md border border-slate-200 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
               </div>
             </div>
           )}
@@ -712,11 +1637,21 @@ export default function HospitalRequests() {
               {[
                 ["Blood group", selectedRequest.bloodGroup],
 
+                [
+                  "Component",
+                  (selectedRequest.component ?? "WHOLE_BLOOD").replace(
+                    /_/g,
+                    " ",
+                  ),
+                ],
+
                 ["Units required", `${selectedRequest.units}`],
+
+                ["Search radius", `${selectedRequest.searchRadiusKm ?? 25} km`],
 
                 ["Urgency", selectedRequest.urgency],
 
-                ["Current status", selectedRequest.status],
+                ["Current status", requestDisplayStatus(selectedRequest)],
 
                 ["Department", selectedRequest.department || "Not specified"],
 
@@ -735,15 +1670,38 @@ export default function HospitalRequests() {
                 [
                   "Donor responses",
 
-                  `${selectedRequest.matchedDonors?.length ?? 0}`,
+                  `${
+                    selectedRequest.validDonorResponseCount ??
+                    responseCounts[selectedRequest.id] ??
+                    0
+                  } / ${MINIMUM_VALID_DONOR_RESPONSES}`,
                 ],
-
                 [
                   "Fulfillment progress",
 
-                  selectedRequest.status === "Fulfilled"
-                    ? "Fulfilled"
-                    : displayStatus(selectedRequest.status),
+                  requestDisplayStatus(selectedRequest),
+                ],
+                [
+                  "Verified donations",
+                  `${selectedRequest.verifiedDonationCount ?? 0} / ${selectedRequest.units} required units`,
+                ],
+                [
+                  "Donation verified at",
+                  selectedRequest.donationCompletedAt
+                    ? formatDate(selectedRequest.donationCompletedAt)
+                    : "No completed donation verified",
+                ],
+                [
+                  "Latest verifier",
+                  selectedRequest.donationVerifiedBy
+                    ? `Hospital staff · ${selectedRequest.donationVerifiedBy}`
+                    : "No hospital verifier recorded",
+                ],
+                [
+                  "Fulfilment review",
+                  selectedRequest.fulfillmentReviewRequired
+                    ? "Review required: fulfillment conditions are incomplete"
+                    : "No outstanding fulfilment review",
                 ],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-slate-50 p-3">
@@ -763,13 +1721,477 @@ export default function HospitalRequests() {
                     : "No additional patient or clinical notes.")}
               </p>
             </div>
-            {isInProgress(selectedRequest.status) && (
-              <button
-                onClick={() => void fulfillRequest(selectedRequest)}
-                className="mt-5 w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
+            <section className="mt-5 border-t border-slate-100 pt-4">
+              <h3 className="text-sm font-bold text-[#101A36]">
+                Confirm an actual donation
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Only confirm a donation after the hospital has completed it. A
+                donor response alone does not start a recovery interval.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <label className="text-xs font-medium text-slate-600">
+                  Donated component
+                  <select
+                    disabled
+                    value={donationComponent}
+                    onChange={(event) =>
+                      setDonationComponent(event.target.value as BloodComponent)
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2"
+                  >
+                    <option value="WHOLE_BLOOD">Whole blood</option>
+                    <option value="PLATELETS">Platelets</option>
+                    <option value="PLASMA">Plasma</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-slate-600">
+                  Donation date and time
+                  <input
+                    type="datetime-local"
+                    value={donationDateTime}
+                    onChange={(event) =>
+                      setDonationDateTime(event.target.value)
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2"
+                  />
+                </label>
+                <label className="text-xs font-medium text-slate-600">
+                  Volume in ml (optional)
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={donationVolumeMl}
+                    onChange={(event) =>
+                      setDonationVolumeMl(event.target.value)
+                    }
+                    placeholder="Not recorded"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2"
+                  />
+                </label>
+              </div>
+              {donationAcknowledgementError && (
+                <p role="alert" className="mt-3 text-xs text-rose-700">
+                  {donationAcknowledgementError}
+                </p>
+              )}
+              {donationCandidatesLoading ? (
+                <p className="mt-3 text-xs text-slate-500">
+                  Loading donor responses…
+                </p>
+              ) : donationCandidates.length ? (
+                <ul className="mt-3 divide-y divide-slate-100">
+                  {donationCandidates.map((candidate) => (
+                    <li
+                      key={candidate.donor_id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {candidate.donor_name || "Donor"} ·{" "}
+                          {candidate.donor_blood_group}
+                        </p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+                          <span className="inline-flex items-center gap-1">
+                            <Phone size={12} />
+                            {candidate.donor_phone ? (
+                              <a
+                                href={`tel:${candidate.donor_phone}`}
+                                className="font-semibold text-blue-700 underline"
+                              >
+                                {candidate.donor_phone}
+                              </a>
+                            ) : (
+                              "Phone not provided"
+                            )}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin size={12} />
+                            {[candidate.donor_area, candidate.donor_city]
+                              .filter(Boolean)
+                              .join(", ") || "Location not provided"}
+                          </span>
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {candidate.response_status} · responded{" "}
+                          {formatDate(candidate.responded_at)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {candidate.response_status === "Response Sent" && (
+                          <button
+                            disabled={responseAcknowledgementBusy !== null}
+                            onClick={() =>
+                              void acknowledgeResponse(candidate.donor_id)
+                            }
+                            className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {responseAcknowledgementBusy === candidate.donor_id
+                              ? "Acknowledging…"
+                              : "Acknowledge response"}
+                          </button>
+                        )}
+                        {[
+                          "Hospital Confirmed",
+                          "Coordination in Progress",
+                        ].includes(candidate.response_status) && (
+                          <button
+                            disabled={
+                              candidate.donation_recorded ||
+                              donationAcknowledgementBusy !== null
+                            }
+                            onClick={() =>
+                              void acknowledgeDonation(candidate.donor_id)
+                            }
+                            className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                          >
+                            {donationAcknowledgementBusy === candidate.donor_id
+                              ? "Recording…"
+                              : "Acknowledge donation"}
+                          </button>
+                        )}
+                        {candidate.donation_recorded && (
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">
+                              Donation verified
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void draftDonorAcknowledgement(candidate)
+                              }
+                              className="rounded-lg border border-(--border) px-3 py-2 text-xs font-semibold text-(--text-primary)"
+                            >
+                              Prepare donor thank-you
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-slate-500">
+                  No donor responses have been received for this request.
+                </p>
+              )}
+            </section>
+            <section className="mt-5 border-t border-slate-100 pt-4">
+              <h3 className="text-sm font-bold text-[#101A36]">
+                NGO Responses
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                NGO offers and declines are recorded separately; they do not
+                count as donor responses or fulfil a request.
+              </p>
+              {ngoResponsesError && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-700"
+                >
+                  NGO responses could not be loaded or updated:{" "}
+                  {ngoResponsesError}
+                </p>
+              )}
+              {ngoResponsesLoading ? (
+                <p className="mt-3 text-xs text-slate-500">
+                  Loading NGO responses…
+                </p>
+              ) : ngoResponses.length ? (
+                <ul className="mt-3 divide-y divide-slate-100">
+                  {ngoResponses.map((response) => {
+                    const phoneHref = response.coordinator_phone
+                      ? safePhoneHref(response.coordinator_phone)
+                      : null
+                    const emailHref = response.coordinator_email
+                      ? safeEmailHref(response.coordinator_email)
+                      : null
+                    return (
+                      <li key={response.response_id} className="py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800">
+                              {response.ngo_name}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {[
+                                response.organisation_type,
+                                response.city,
+                                response.areas_served,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") ||
+                                "Organisation details not provided"}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-slate-700">
+                              {response.response_type === "potential_donor"
+                                ? `${response.potential_donor_count ?? 0} potential donor(s) · ${response.response_status}`
+                                : `Unable to help · ${response.unable_reason || "Reason not supplied"}`}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Responded {formatDate(response.responded_at)}
+                            </p>
+                            {response.response_type === "potential_donor" && (
+                              <>
+                                <p className="mt-1 text-xs text-slate-600">
+                                  Coordinator:{" "}
+                                  {response.contact_shared
+                                    ? response.coordinator_name ||
+                                      "Name not provided"
+                                    : "Contact not shared"}
+                                </p>
+                                {response.expected_time && (
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    Availability: {response.expected_time}
+                                  </p>
+                                )}
+                                {response.coordination_note && (
+                                  <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">
+                                    Note: {response.coordination_note}
+                                  </p>
+                                )}
+                                {response.contact_shared && (
+                                  <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                                    {phoneHref && (
+                                      <a
+                                        className="font-semibold text-blue-700 underline"
+                                        href={phoneHref}
+                                      >
+                                        Call coordinator
+                                      </a>
+                                    )}
+                                    {emailHref && (
+                                      <a
+                                        className="font-semibold text-blue-700 underline"
+                                        href={emailHref}
+                                      >
+                                        Email coordinator
+                                      </a>
+                                    )}
+                                    {!phoneHref && !emailHref && (
+                                      <span className="text-slate-500">
+                                        No usable coordinator contact details.
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {response.response_type === "potential_donor" &&
+                              response.response_status ===
+                                "Awaiting Hospital Coordination" && (
+                                <button
+                                  type="button"
+                                  disabled={ngoCoordinationBusy !== null}
+                                  onClick={() =>
+                                    void updateNgoCoordination(
+                                      response.response_id,
+                                      "Coordination in Progress",
+                                    )
+                                  }
+                                  className="rounded-lg border border-teal-200 px-3 py-2 text-xs font-semibold text-teal-800 disabled:opacity-50"
+                                >
+                                  {ngoCoordinationBusy === response.response_id
+                                    ? "Updating…"
+                                    : "Start coordination"}
+                                </button>
+                              )}
+                            {response.response_type === "potential_donor" &&
+                              response.response_status ===
+                                "Coordination in Progress" &&
+                              donationCandidates.some(
+                                (candidate) => candidate.donation_recorded,
+                              ) && (
+                                <button
+                                  type="button"
+                                  disabled={ngoCoordinationBusy !== null}
+                                  onClick={() =>
+                                    void updateNgoCoordination(
+                                      response.response_id,
+                                      "Donation Verified",
+                                    )
+                                  }
+                                  className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50"
+                                >
+                                  Confirm NGO contribution supported verified
+                                  donation
+                                </button>
+                              )}
+                            {response.response_type === "potential_donor" &&
+                              response.contact_shared && (
+                                <button
+                                  type="button"
+                                  onClick={() => draftNgoAppreciation(response)}
+                                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+                                >
+                                  Prepare NGO appreciation
+                                </button>
+                              )}
+                          </div>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-slate-500">
+                  No NGO responses have been received for this request.
+                </p>
+              )}
+            </section>
+            <section className="mt-5 border-t border-slate-100 pt-4">
+              <h3 className="text-sm font-bold text-[#101A36]">
+                Fulfilment verification
+              </h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Valid unique donor responses: {selectedValidResponseCount} /{" "}
+                {MINIMUM_VALID_DONOR_RESPONSES} · Verified donations:{" "}
+                {selectedVerifiedDonationCount} / {selectedRequest.units} units
+              </p>
+              <div
+                role="progressbar"
+                aria-label="Valid unique donor response progress"
+                aria-valuemin={0}
+                aria-valuemax={MINIMUM_VALID_DONOR_RESPONSES}
+                aria-valuenow={Math.min(
+                  selectedValidResponseCount,
+                  MINIMUM_VALID_DONOR_RESPONSES,
+                )}
+                className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"
               >
-                Mark Fulfilled
-              </button>
+                <span
+                  className="block h-full rounded-full bg-teal-500"
+                  style={{
+                    width: `${Math.min(
+                      (selectedValidResponseCount /
+                        MINIMUM_VALID_DONOR_RESPONSES) *
+                        100,
+                      100,
+                    )}%`,
+                  }}
+                />
+              </div>
+              {selectedVerifiedDonationCount > 0 &&
+                (selectedValidResponseCount < MINIMUM_VALID_DONOR_RESPONSES ||
+                  selectedVerifiedDonationCount < selectedRequest.units) && (
+                  <p
+                    role="status"
+                    className="mt-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800"
+                  >
+                    Actual donation recorded; valid response and/or
+                    requested-unit requirements are not yet met. This request
+                    remains open and is flagged for review.
+                  </p>
+                )}
+            </section>
+            {acknowledgementDraft && (
+              <section className="mt-5 rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+                <h3 className="text-sm font-bold text-(--text-primary)">
+                  Review acknowledgement before saving
+                </h3>
+                <p className="mt-1 text-xs text-(--text-secondary)">
+                  To: {acknowledgementDraft.recipientName} ·{" "}
+                  {acknowledgementDraft.messageType === "ngo_appreciation"
+                    ? "NGO appreciation"
+                    : "Donor thank-you"}
+                </p>
+                <textarea
+                  aria-label="Acknowledgement message preview"
+                  rows={5}
+                  value={acknowledgementDraft.content}
+                  onChange={(event) =>
+                    setAcknowledgementDraft((draft) =>
+                      draft
+                        ? {
+                            ...draft,
+                            content: event.target.value,
+                            savedId: undefined,
+                          }
+                        : null,
+                    )
+                  }
+                  className="mt-3 w-full rounded-lg border border-(--border) bg-(--surface) p-3 text-sm text-(--text-primary)"
+                />
+                <p className="mt-2 text-[11px] text-(--text-muted)">
+                  Email and SMS are not configured here. Saving approves a
+                  copyable message; it does not send it.
+                </p>
+                {acknowledgementError && (
+                  <p
+                    role="status"
+                    className="mt-2 text-xs text-(--text-secondary)"
+                  >
+                    {acknowledgementError}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      acknowledgementBusy ||
+                      !acknowledgementDraft.content.trim()
+                    }
+                    onClick={() => void saveAcknowledgement()}
+                    className="rounded-lg bg-(--brand) px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {acknowledgementBusy
+                      ? "Saving…"
+                      : acknowledgementDraft.savedId
+                        ? "Save edited message"
+                        : "Approve and save"}
+                  </button>
+                  {acknowledgementDraft.savedId && (
+                    <button
+                      type="button"
+                      onClick={() => void copyAcknowledgement()}
+                      className="rounded-lg border border-(--border) px-3 py-2 text-xs font-semibold text-(--text-primary)"
+                    >
+                      Copy message (not sent)
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAcknowledgementDraft(null)
+                      setAcknowledgementError(null)
+                    }}
+                    className="rounded-lg border border-(--border) px-3 py-2 text-xs text-(--text-secondary)"
+                  >
+                    Close
+                  </button>
+                </div>
+              </section>
+            )}
+            {isInProgress(selectedRequest.status) && (
+              <>
+                <button
+                  type="button"
+                  disabled={!fulfillmentReady || donationCandidatesLoading}
+                  onClick={() => void fulfillRequest(selectedRequest)}
+                  className="mt-5 w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: fulfillmentReady ? "#187A76" : "#35434D",
+                  }}
+                >
+                  {donationCandidatesLoading
+                    ? "Checking fulfilment requirements…"
+                    : "Mark Fulfilled"}
+                </button>
+                {!fulfillmentReady && (
+                  <p className="mt-2 text-center text-xs text-slate-500">
+                    Requires at least one valid unique donor response (
+                    {selectedValidResponseCount}/1) and verified donations for
+                    all {selectedRequest.units} requested unit(s) (
+                    {selectedVerifiedDonationCount}/{selectedRequest.units}).
+                    This action activates automatically when both requirements
+                    are met.
+                  </p>
+                )}
+              </>
             )}
           </section>
         </div>
@@ -784,20 +2206,20 @@ export default function HospitalRequests() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="request-form-title"
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-(--border) bg-(--surface) p-6 text-(--text-primary) shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-5 flex items-start justify-between">
               <div>
                 <h2
                   id="request-form-title"
-                  className="text-xl font-bold text-[#101A36]"
+                  className="text-xl font-bold text-(--text-primary)"
                 >
                   {editing
                     ? "Edit Blood Requirement"
                     : "Post Blood Requirement"}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-(--text-secondary)">
                   Share only the minimum patient information needed for
                   coordination.
                 </p>
@@ -810,7 +2232,7 @@ export default function HospitalRequests() {
               onSubmit={(event) => void saveRequest(event)}
               className="grid gap-4 sm:grid-cols-2"
             >
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Blood Group
                 <select
                   required
@@ -822,14 +2244,77 @@ export default function HospitalRequests() {
                       bloodGroup: event.target.value as BloodGroup,
                     })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 >
                   {groups.map((group) => (
-                    <option key={group}>{group}</option>
+                    <option
+                      key={group}
+                      style={{
+                        backgroundColor: "var(--surface)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {group}
+                    </option>
                   ))}
                 </select>
               </label>
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
+                Blood Component
+                <select
+                  value={form.component}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+
+                      component: event.target.value as BloodComponent,
+                    })
+                  }
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
+                >
+                  <option
+                    value="WHOLE_BLOOD"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Whole blood
+                  </option>
+                  <option
+                    value="PLATELETS"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Platelets
+                  </option>
+                  <option
+                    value="PLASMA"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Plasma
+                  </option>
+                  <option
+                    value="OTHER"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Other / requires review
+                  </option>
+                </select>
+                <span className="mt-1 block text-xs font-normal text-(--text-secondary)">
+                  Automatic donor matching is currently limited to whole blood.
+                  Other components require manual clinical review.
+                </span>
+              </label>
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Units Required
                 <input
                   required
@@ -840,24 +2325,101 @@ export default function HospitalRequests() {
                   onChange={(event) =>
                     setForm({ ...form, units: Number(event.target.value) })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 />
               </label>
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
+                Donor Search Radius
+                <select
+                  value={customRadius ? "custom" : form.searchRadiusKm}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setForm({
+                      ...form,
+                      searchRadiusKm: value === "custom" ? 50 : Number(value),
+                    })
+                  }}
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
+                >
+                  {[5, 10, 25].map((radius) => (
+                    <option
+                      key={radius}
+                      value={radius}
+                      style={{
+                        backgroundColor: "var(--surface)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {radius} km
+                    </option>
+                  ))}
+                  <option
+                    value="custom"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Custom radius (5–50 km)
+                  </option>
+                </select>
+                {customRadius && (
+                  <input
+                    aria-label="Custom donor search radius in kilometres"
+                    type="number"
+                    min={5}
+                    max={50}
+                    step={1}
+                    value={form.searchRadiusKm}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        searchRadiusKm: Number(event.target.value),
+                      })
+                    }
+                    className="mt-2 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
+                  />
+                )}
+              </label>
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Urgency
                 <select
                   value={form.urgency}
                   onChange={(event) =>
                     setForm({ ...form, urgency: event.target.value as Urgency })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 >
-                  <option value="NORMAL">Normal</option>
-                  <option value="URGENT">High</option>
-                  <option value="CRITICAL">Critical</option>
+                  <option
+                    value="NORMAL"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Normal
+                  </option>
+                  <option
+                    value="URGENT"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    High
+                  </option>
+                  <option
+                    value="CRITICAL"
+                    style={{
+                      backgroundColor: "var(--surface)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Critical
+                  </option>
                 </select>
               </label>
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Required By
                 <input
                   type="datetime-local"
@@ -865,10 +2427,10 @@ export default function HospitalRequests() {
                   onChange={(event) =>
                     setForm({ ...form, requiredBy: event.target.value })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 />
               </label>
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Hospital Department
                 <input
                   value={form.department}
@@ -876,10 +2438,10 @@ export default function HospitalRequests() {
                     setForm({ ...form, department: event.target.value })
                   }
                   placeholder="e.g. Emergency"
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 />
               </label>
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Area / Location
                 <input
                   value={form.area}
@@ -887,10 +2449,10 @@ export default function HospitalRequests() {
                     setForm({ ...form, area: event.target.value })
                   }
                   placeholder="Hospital location or area"
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 />
               </label>
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-(--text-secondary)">
                 Patient Age (optional)
                 <input
                   type="number"
@@ -900,10 +2462,10 @@ export default function HospitalRequests() {
                   onChange={(event) =>
                     setForm({ ...form, patientAge: event.target.value })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 />
               </label>
-              <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+              <label className="text-sm font-medium text-(--text-secondary) sm:col-span-2">
                 Patient Information / Additional Notes
                 <textarea
                   rows={3}
@@ -912,7 +2474,7 @@ export default function HospitalRequests() {
                     setForm({ ...form, notes: event.target.value })
                   }
                   placeholder="Non-identifying clinical context only"
-                  className="mt-1.5 w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5"
+                  className="mt-1.5 w-full resize-y rounded-lg border border-(--border) bg-(--surface) px-3 py-2.5 text-(--text-primary)"
                 />
               </label>
               {error && (
@@ -933,16 +2495,26 @@ export default function HospitalRequests() {
                       {requestLocationAddress ||
                         "Choose the location for this request."}
                     </p>
+                    <p className="mt-1 text-xs text-(--text-secondary)">
+                      Registered hospital contact details will be shared with
+                      the assigned local NGO.
+                    </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       setRequestLocation(registeredLocation)
-
                       setRequestLocationAddress(registeredAddress)
+                      setForm((current) => ({
+                        ...current,
+                        area:
+                          registeredAddress ||
+                          (typeof roleDetails?.city === "string"
+                            ? roleDetails.city
+                            : ""),
+                      }))
                     }}
-                    disabled={!registeredLocation}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                    className="rounded-lg border border-(--border) bg-(--surface) px-3 py-2 text-xs font-semibold text-(--text-primary) hover:bg-(--surface-hover)"
                   >
                     Use registered hospital location
                   </button>
