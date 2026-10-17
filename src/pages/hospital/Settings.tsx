@@ -16,6 +16,7 @@ import DashboardLayout, {
 import { useApp } from "../../context/AppContext"
 
 import { supabase } from "../../lib/supabase"
+
 import {
   MapLocationPicker,
   type Coordinates,
@@ -33,19 +34,34 @@ type Preferences = {
 
 const defaults: Preferences = {
   new_donor_response: true,
+
   critical_request: true,
+
   request_verification: true,
+
   request_fulfillment: true,
 }
 
 export default function HospitalSettings() {
-  const { currentUser, roleDetails, logout, updateHospitalLocation } = useApp()
+  const {
+    currentUser,
+
+    roleDetails,
+
+    hospitalRecordId,
+
+    logout,
+
+    updateHospitalLocation,
+  } = useApp()
+
   const storedCoords =
     typeof roleDetails?.map_location === "string"
       ? roleDetails.map_location.match(
           /\(?\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*\)?\s*$/,
         )
       : null
+
   const registeredLocation: Coordinates | null =
     typeof roleDetails?.latitude === "number" &&
     typeof roleDetails?.longitude === "number"
@@ -53,12 +69,15 @@ export default function HospitalSettings() {
       : storedCoords
         ? {
             latitude: Number(storedCoords[1]),
+
             longitude: Number(storedCoords[2]),
           }
         : null
+
   const [location, setLocation] = useState<Coordinates | null>(
     registeredLocation,
   )
+
   const [locationAddress, setLocationAddress] = useState(
     typeof roleDetails?.location_address === "string"
       ? roleDetails.location_address
@@ -103,14 +122,18 @@ export default function HospitalSettings() {
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!currentUser?.id) return
+    if (!hospitalRecordId) return
 
     void supabase
+
       .from("hospital_notification_preferences")
+
       .select(
         "new_donor_response,critical_request,request_verification,request_fulfillment",
       )
-      .eq("hospital_id", currentUser.id)
+
+      .eq("hospital_id", hospitalRecordId)
+
       .maybeSingle()
 
       .then(({ data, error: loadError }) => {
@@ -120,19 +143,23 @@ export default function HospitalSettings() {
           )
         else if (data) setPreferences(data)
       })
-  }, [currentUser?.id])
+  }, [hospitalRecordId])
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!currentUser?.id) return
+    if (!currentUser?.id || !hospitalRecordId) return
 
     setSavingProfile(true)
+
     setError(null)
+
     setMessage(null)
 
     const { error: saveError } = await supabase
+
       .from("hospitals")
+
       .update({
         hospital_name: profile.hospital_name.trim(),
 
@@ -146,6 +173,7 @@ export default function HospitalSettings() {
 
         email: profile.email.trim() || null,
       })
+
       .eq("user_id", currentUser.id)
 
     if (saveError) setError(saveError.message)
@@ -158,17 +186,24 @@ export default function HospitalSettings() {
     if (!currentUser?.id) return
 
     setSavingPreferences(true)
+
     setError(null)
+
     setMessage(null)
 
     const { error: saveError } = await supabase
+
       .from("hospital_notification_preferences")
+
       .upsert(
         {
-          hospital_id: currentUser.id,
+          hospital_id: hospitalRecordId,
+
           ...preferences,
+
           updated_at: new Date().toISOString(),
         },
+
         { onConflict: "hospital_id" },
       )
 
@@ -181,15 +216,21 @@ export default function HospitalSettings() {
   const saveLocation = async () => {
     if (!location) {
       setError("Select a hospital location on the map first.")
+
       return
     }
+
     setError(null)
+
     setMessage(null)
+
     try {
       await updateHospitalLocation({
         ...location,
+
         address: locationAddress,
       })
+
       setMessage("Hospital map location saved.")
     } catch (saveError) {
       setError(
@@ -204,7 +245,9 @@ export default function HospitalSettings() {
     event.preventDefault()
 
     setSavingPassword(true)
+
     setError(null)
+
     setMessage(null)
 
     const { error: passwordError } = await supabase.auth.updateUser({
@@ -214,6 +257,7 @@ export default function HospitalSettings() {
     if (passwordError) setError(passwordError.message)
     else {
       setPassword("")
+
       setMessage("Password updated.")
     }
 
@@ -261,10 +305,15 @@ export default function HospitalSettings() {
           >
             {([
               ["hospital_name", "Hospital name"],
+
               ["hospital_type", "Hospital type"],
+
               ["street_address", "Address"],
+
               ["city", "City"],
+
               ["phone", "Phone"],
+
               ["email", "Email"],
             ] as const).map(([key, label]) => (
               <label key={key} className="text-sm font-medium text-slate-700">
@@ -311,8 +360,10 @@ export default function HospitalSettings() {
             onChange={(value) => {
               setLocation({
                 latitude: value.latitude,
+
                 longitude: value.longitude,
               })
+
               setLocationAddress(value.address)
             }}
           />
@@ -342,22 +393,33 @@ export default function HospitalSettings() {
             {([
               [
                 "new_donor_response",
+
                 "New donor response",
+
                 "When a donor responds to a request.",
               ],
+
               [
                 "critical_request",
+
                 "Critical request",
+
                 "Important updates for critical blood requirements.",
               ],
+
               [
                 "request_verification",
+
                 "Request verification",
+
                 "When a request is verified.",
               ],
+
               [
                 "request_fulfillment",
+
                 "Request fulfillment",
+
                 "When a request is marked fulfilled.",
               ],
             ] as const).map(([key, label, description]) => (
@@ -379,6 +441,7 @@ export default function HospitalSettings() {
                   onChange={(event) =>
                     setPreferences({
                       ...preferences,
+
                       [key]: event.target.checked,
                     })
                   }

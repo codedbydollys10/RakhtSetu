@@ -31,7 +31,7 @@ type PatientRecord = {
 const groups: BloodGroup[] = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"]
 
 export default function HospitalPatients() {
-  const { currentUser, requests } = useApp()
+  const { currentUser, requests, hospitalRecordId } = useApp()
 
   const [records, setRecords] = useState<PatientRecord[]>([])
 
@@ -51,25 +51,33 @@ export default function HospitalPatients() {
 
   const [form, setForm] = useState({
     patient_name: "",
+
     blood_group: "O+" as BloodGroup,
+
     request_id: "",
+
     units_required: 1,
+
     status: "Active",
   })
 
   const loadPatients = async () => {
-    if (!currentUser?.id) return
+    if (!hospitalRecordId) return
 
     setLoading(true)
 
     setError(null)
 
     const { data, error: loadError } = await supabase
+
       .from("patients")
+
       .select(
         "id,patient_name,blood_group,request_id,units_required,status,created_at",
       )
-      .eq("hospital_id", currentUser.id)
+
+      .eq("hospital_id", hospitalRecordId)
+
       .order("created_at", { ascending: false })
 
     if (loadError) setError(loadError.message)
@@ -80,15 +88,18 @@ export default function HospitalPatients() {
 
   useEffect(() => {
     void loadPatients()
-  }, [currentUser?.id])
+  }, [hospitalRecordId])
 
   const filtered = useMemo(
     () =>
       records.filter((record) =>
         `${record.id} ${record.patient_name} ${record.blood_group} ${record.request_id ?? ""}`
+
           .toLowerCase()
+
           .includes(query.toLowerCase()),
       ),
+
     [records, query],
   )
 
@@ -99,16 +110,24 @@ export default function HospitalPatients() {
       record
         ? {
             patient_name: record.patient_name,
+
             blood_group: record.blood_group,
+
             request_id: record.request_id ?? "",
+
             units_required: record.units_required,
+
             status: record.status,
           }
         : {
             patient_name: "",
+
             blood_group: "O+",
+
             request_id: "",
+
             units_required: 1,
+
             status: "Active",
           },
     )
@@ -119,7 +138,7 @@ export default function HospitalPatients() {
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!currentUser?.id) return
+    if (!currentUser?.id || !hospitalRecordId) return
 
     setSaving(true)
 
@@ -127,17 +146,24 @@ export default function HospitalPatients() {
 
     const payload = {
       ...form,
-      hospital_id: currentUser.id,
+
+      hospital_id: hospitalRecordId,
+
       request_id: form.request_id || null,
+
       patient_name: form.patient_name.trim(),
     }
 
     const result = editing
       ? await supabase
+
           .from("patients")
+
           .update(payload)
+
           .eq("id", editing.id)
-          .eq("hospital_id", currentUser.id)
+
+          .eq("hospital_id", hospitalRecordId)
       : await supabase.from("patients").insert(payload)
 
     if (result.error) setError(result.error.message)
@@ -193,12 +219,19 @@ export default function HospitalPatients() {
               <tr>
                 {[
                   "Patient ID",
+
                   "Patient Name",
+
                   "Blood Group",
+
                   "Request ID",
+
                   "Required Units",
+
                   "Status",
+
                   "Created Date",
+
                   "Actions",
                 ].map((title) => (
                   <th key={title} className="px-4 py-3">
@@ -318,6 +351,7 @@ export default function HospitalPatients() {
                     onChange={(event) =>
                       setForm({
                         ...form,
+
                         blood_group: event.target.value as BloodGroup,
                       })
                     }
@@ -338,6 +372,7 @@ export default function HospitalPatients() {
                     onChange={(event) =>
                       setForm({
                         ...form,
+
                         units_required: Number(event.target.value),
                       })
                     }
@@ -356,7 +391,11 @@ export default function HospitalPatients() {
                 >
                   <option value="">No linked request</option>
                   {requests
-                    .filter((request) => request.hospitalId === currentUser?.id)
+
+                    .filter(
+                      (request) => request.hospitalId === hospitalRecordId,
+                    )
+
                     .map((request) => (
                       <option key={request.id} value={request.id}>
                         {request.id} · {request.bloodGroup}
@@ -427,12 +466,18 @@ export default function HospitalPatients() {
             <dl className="mt-5 space-y-3 text-sm">
               {[
                 ["Patient ID", selected.id],
+
                 ["Blood Group", selected.blood_group],
+
                 ["Request ID", selected.request_id ?? "Not linked"],
+
                 ["Required Units", String(selected.units_required)],
+
                 ["Status", selected.status],
+
                 [
                   "Created Date",
+
                   new Date(selected.created_at).toLocaleString("en-IN"),
                 ],
               ].map(([label, value]) => (

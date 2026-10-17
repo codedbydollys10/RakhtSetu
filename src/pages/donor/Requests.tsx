@@ -97,7 +97,21 @@ function RequestDetails({
               `${request.units} ${request.units === 1 ? "unit" : "units"}`,
             ],
             ["Location", request.area],
-            ["Distance", distanceByArea[request.area] ?? "Nearby"],
+            [
+              "Distance",
+              request.distanceKm != null
+                ? `About ${request.distanceKm} km`
+                : distanceByArea[request.area] ?? "Nearby",
+            ],
+            [
+              "Required by",
+              request.requiredBy
+                ? new Date(request.requiredBy).toLocaleString("en-IN", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })
+                : "As soon as possible",
+            ],
             ["Status", request.status],
             ["Verification", request.verifiedBy ?? "Verified request"],
             [
@@ -135,7 +149,7 @@ export function DonorRequestWorkspace({
 }: {
   mode?: "emergency" | "nearby"
 }) {
-  const { requests, updateRequestStatus, currentUser, donors } = useApp()
+  const { requests, currentUser, donors, requestFeedError } = useApp()
 
   const donor = donors.find((item) => item.id === currentUser?.id)
 
@@ -182,11 +196,6 @@ export function DonorRequestWorkspace({
               .toLowerCase()
               .includes(query.toLowerCase())
 
-          const matchesEmergencyGroup =
-            mode !== "emergency" ||
-            !bloodGroup ||
-            request.bloodGroup === bloodGroup
-
           const matchesGroup =
             group === "All blood groups" || request.bloodGroup === group
 
@@ -194,7 +203,9 @@ export function DonorRequestWorkspace({
             urgency === "All urgency" ||
             urgencyLabel[request.urgency] === urgency
 
-          const km = Number.parseFloat(distanceByArea[request.area] ?? "99")
+          const km =
+            request.distanceKm ??
+            Number.parseFloat(distanceByArea[request.area] ?? "99")
 
           const matchesDistance =
             distance === "Any distance" || km <= Number(distance)
@@ -208,7 +219,6 @@ export function DonorRequestWorkspace({
           return (
             isActive &&
             matchesSearch &&
-            matchesEmergencyGroup &&
             matchesGroup &&
             matchesUrgency &&
             matchesDistance &&
@@ -237,7 +247,6 @@ export function DonorRequestWorkspace({
 
     try {
       await recordResponse(confirm.id)
-      updateRequestStatus(confirm.id, "Donor Confirmed")
     } catch (error) {
       setToast(
         error instanceof Error
@@ -265,6 +274,11 @@ export function DonorRequestWorkspace({
   return (
     <DashboardLayout>
       <PageHeader title={title} subtitle={subtitle} />
+      {requestFeedError && (
+        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          Requests could not be loaded: {requestFeedError}
+        </p>
+      )}
       <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-[#D8E3EA] bg-white p-3">
         <div className="relative min-w-[190px] flex-1">
           <Search

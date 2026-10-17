@@ -95,6 +95,12 @@ export interface BloodRequest {
   fulfilledAt?: string
 
   area: string
+  department?: string
+  requiredBy?: string
+  latitude?: number
+  longitude?: number
+  locationAddress?: string
+  distanceKm?: number
 
   patientAge?: number
 

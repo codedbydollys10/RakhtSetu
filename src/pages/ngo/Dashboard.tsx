@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import {
@@ -77,15 +78,41 @@ function SectionHeading({
 }
 
 export default function NGODashboard() {
-  const { requests, donors, currentUser, verifyRequest } = useApp()
+  const { requests, donors, currentUser, requestFeedError, verifyRequest } = useApp()
+  const [actionError, setActionError] = useState<string | null>(null)
   const pending = requests.filter((r) => r.status === "Verification Pending")
-  const active = requests.filter(
-    (r) => !["Fulfilled", "Created"].includes(r.status),
+  const active = requests.filter((request) =>
+    ["Verified", "Matching", "Donors Contacted", "Donor Confirmed", "Hospital Confirmation"].includes(
+      request.status,
+    ),
   )
+  const coordinatedThisYear = requests.filter(
+    (request) =>
+      request.status !== "Verification Pending" &&
+      request.status !== "Cancelled" &&
+      new Date(request.createdAt).getFullYear() === new Date().getFullYear(),
+  ).length
   const availDonors = donors.filter((d) => d.available).length
+  const handleVerify = async (requestId: string) => {
+    setActionError(null)
+    try {
+      await verifyRequest(requestId)
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Unable to verify this request.",
+      )
+    }
+  }
 
   return (
     <DashboardLayout>
+      {(requestFeedError || actionError) && (
+        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {requestFeedError
+            ? `Requests could not be loaded: ${requestFeedError}`
+            : actionError}
+        </p>
+      )}
       <header className="ngo-welcome-card mb-8 overflow-hidden rounded-2xl shadow-[0_4px_18px_rgba(3,26,54,0.05)]">
         <div className="ngo-welcome-surface grid min-h-40 items-center gap-4 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_200px] sm:px-7">
           <div>
@@ -139,8 +166,8 @@ export default function NGODashboard() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <NGOStatCard
             label="Requests Coordinated"
-            value={142}
-            sub="This year"
+            value={coordinatedThisYear}
+            sub="Assigned requests this year"
             icon={BarChart3}
           />
         </motion.div>
@@ -195,7 +222,7 @@ export default function NGODashboard() {
                         )}
                       </div>
                       <button
-                        onClick={() => verifyRequest(req.id)}
+                        onClick={() => void handleVerify(req.id)}
                         className="whitespace-nowrap rounded-lg bg-[#E51C3D] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#C91532] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E51C3D]"
                       >
                         Verify Request

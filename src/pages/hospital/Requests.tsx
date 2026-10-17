@@ -25,6 +25,7 @@ import type {
   RequestStatus,
   Urgency,
 } from "../../data/mockData"
+
 import InteractiveNetworkMap, {
   MapLocationPicker,
   type Coordinates,
@@ -57,8 +58,11 @@ const emptyForm = {
 function isInProgress(status: RequestStatus) {
   return [
     "Donor Confirmed",
+
     "Hospital Confirmation",
+
     "Matching",
+
     "Donors Contacted",
   ].includes(status)
 }
@@ -87,6 +91,8 @@ export default function HospitalRequests() {
 
     roleDetails,
 
+    hospitalRecordId,
+
     hospitalRequestsLoading,
 
     hospitalRequestsError,
@@ -112,25 +118,30 @@ export default function HospitalRequests() {
           /\(?\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*\)?\s*$/,
         )
       : null
+
   const registeredLocation: Coordinates | null =
     typeof roleDetails?.latitude === "number" &&
     typeof roleDetails?.longitude === "number"
       ? {
           latitude: roleDetails.latitude,
+
           longitude: roleDetails.longitude,
         }
       : storedMapCoordinates
         ? {
             latitude: Number(storedMapCoordinates[1]),
+
             longitude: Number(storedMapCoordinates[2]),
           }
         : null
+
   const registeredAddress =
     (typeof roleDetails?.location_address === "string" &&
       roleDetails.location_address) ||
     (typeof roleDetails?.map_location === "string"
       ? roleDetails.map_location.replace(
           /\s*\(?\s*-?\d{1,2}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?\s*\)?\s*$/,
+
           "",
         )
       : "")
@@ -170,10 +181,17 @@ export default function HospitalRequests() {
     if (id) setSelected(id)
   }, [location.search])
 
-  const ownRequests = useMemo(
-    () => requests.filter((request) => request.hospitalId === currentUser?.id),
+  useEffect(() => {
+    const routeNotice = (location.state as { successNotice?: unknown } | null)
+      ?.successNotice
 
-    [requests, currentUser?.id],
+    if (typeof routeNotice === "string") setNotice(routeNotice)
+  }, [location.state])
+
+  const ownRequests = useMemo(
+    () => requests.filter((request) => request.hospitalId === hospitalRecordId),
+
+    [requests, hospitalRecordId],
   )
 
   const visibleRequests = ownRequests.filter((request) => {
@@ -184,7 +202,9 @@ export default function HospitalRequests() {
     const matchesSearch =
       !search ||
       `${request.id} ${request.bloodGroup} ${request.department ?? ""}`
+
         .toLowerCase()
+
         .includes(search.toLowerCase())
 
     return matchesTab && matchesSearch
@@ -194,11 +214,13 @@ export default function HospitalRequests() {
 
   const openEdit = (request: BloodRequest) => {
     setEditing(request.id)
+
     setRequestLocation(
       request.latitude != null && request.longitude != null
         ? { latitude: request.latitude, longitude: request.longitude }
         : null,
     )
+
     setRequestLocationAddress(request.locationAddress ?? "")
 
     setForm({
@@ -226,24 +248,36 @@ export default function HospitalRequests() {
     setShowForm(true)
   }
 
-  const closeForm = () => {
+  const closeForm = (successNotice?: string) => {
     setShowForm(false)
 
     setEditing(null)
 
     setForm(emptyForm)
+
     setRequestLocation(registeredLocation)
+
     setRequestLocationAddress(registeredAddress)
 
     setError(null)
 
-    if (initialCreate) navigate("/hospital/requests")
+    if (initialCreate) {
+      navigate("/hospital/requests", {
+        state: successNotice ? { successNotice } : null,
+      })
+    } else if (successNotice) {
+      setNotice(successNotice)
+    }
   }
 
   const saveRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!currentUser) return
+    if (!currentUser) {
+      setError("Sign in to create a hospital request.")
+
+      return
+    }
 
     setSaving(true)
 
@@ -251,47 +285,69 @@ export default function HospitalRequests() {
 
     setNotice(null)
 
-    const values = {
-      bloodGroup: form.bloodGroup,
-
-      units: Number(form.units),
-
-      urgency: form.urgency,
-
-      area: form.area.trim(),
-
-      department: form.department.trim(),
-
-      requiredBy: form.requiredBy
-        ? new Date(form.requiredBy).toISOString()
-        : "",
-
-      patientAge: form.patientAge ? Number(form.patientAge) : undefined,
-
-      notes: form.notes.trim(),
-      latitude: requestLocation?.latitude,
-      longitude: requestLocation?.longitude,
-      locationAddress: requestLocationAddress.trim(),
-    }
-
     try {
+      const units = Number(form.units)
+
+      if (!Number.isInteger(units) || units < 1 || units > 20) {
+        throw new Error("Enter a valid number of units (1 to 20).")
+      }
+
+      if (
+        !form.area.trim() &&
+        !requestLocationAddress.trim() &&
+        !requestLocation &&
+        !(typeof roleDetails?.city === "string" && roleDetails.city.trim())
+      ) {
+        throw new Error("Add an area or hospital location for this request.")
+      }
+
+      const requiredBy = form.requiredBy ? new Date(form.requiredBy) : null
+
+      if (requiredBy && Number.isNaN(requiredBy.getTime())) {
+        throw new Error("Enter a valid required-by date and time.")
+      }
+
+      const values = {
+        bloodGroup: form.bloodGroup,
+
+        units,
+
+        urgency: form.urgency,
+
+        area: form.area.trim(),
+
+        department: form.department.trim(),
+
+        requiredBy: requiredBy?.toISOString() ?? "",
+
+        patientAge: form.patientAge ? Number(form.patientAge) : undefined,
+
+        notes: form.notes.trim(),
+
+        latitude: requestLocation?.latitude,
+
+        longitude: requestLocation?.longitude,
+
+        locationAddress: requestLocationAddress.trim(),
+      }
+
       if (editing) {
         await updateHospitalRequestDetails(editing, values)
 
-        setNotice("Request changes saved.")
+        closeForm("Request changes saved.")
       } else {
-        await createHospitalRequest({
+        const created = await createHospitalRequest({
           ...values,
 
-          hospitalId: currentUser.id,
+          hospitalId: hospitalRecordId ?? "",
 
           hospitalName: currentUser.name,
         })
 
-        setNotice("Blood requirement posted successfully.")
+        closeForm(
+          `Request ${created.id} was saved with status ${created.status}.`,
+        )
       }
-
-      closeForm()
     } catch (saveError) {
       const message =
         saveError instanceof Error
@@ -308,8 +364,11 @@ export default function HospitalRequests() {
     if (
       [
         "Fulfilled",
+
         "Cancelled",
+
         "Donor Confirmed",
+
         "Hospital Confirmation",
       ].includes(request.status)
     )
@@ -341,6 +400,7 @@ export default function HospitalRequests() {
 
     try {
       await updateHospitalRequest(request.id, "Fulfilled")
+
       setNotice(`${request.id} was marked fulfilled.`)
     } catch (fulfillError) {
       setError(
@@ -365,9 +425,13 @@ export default function HospitalRequests() {
             <button
               onClick={() => {
                 setForm(emptyForm)
+
                 setEditing(null)
+
                 setRequestLocation(registeredLocation)
+
                 setRequestLocationAddress(registeredAddress)
+
                 setShowForm(true)
               }}
               className="inline-flex items-center gap-2 rounded-lg bg-[#E11D48] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#BE123C]"
@@ -451,7 +515,7 @@ export default function HospitalRequests() {
           </div>
           {viewMode === "map" ? (
             <InteractiveNetworkMap
-              hospitalId={currentUser?.id ?? ""}
+              hospitalId={hospitalRecordId ?? ""}
               hospitalLocation={registeredLocation}
               hospitalName={currentUser?.name ?? "Hospital"}
               mode="requests"
@@ -466,12 +530,19 @@ export default function HospitalRequests() {
                     <tr>
                       {[
                         "Request ID",
+
                         "Blood Group",
+
                         "Units",
+
                         "Urgency",
+
                         "Status",
+
                         "Created",
+
                         "Responses",
+
                         "Actions",
                       ].map((title) => (
                         <th key={title} className="px-4 py-3 font-bold">
@@ -495,8 +566,11 @@ export default function HospitalRequests() {
                       visibleRequests.map((request) => {
                         const editAllowed = ![
                           "Fulfilled",
+
                           "Cancelled",
+
                           "Donor Confirmed",
+
                           "Hospital Confirmation",
                         ].includes(request.status)
 
@@ -637,24 +711,36 @@ export default function HospitalRequests() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               {[
                 ["Blood group", selectedRequest.bloodGroup],
+
                 ["Units required", `${selectedRequest.units}`],
+
                 ["Urgency", selectedRequest.urgency],
+
                 ["Current status", selectedRequest.status],
+
                 ["Department", selectedRequest.department || "Not specified"],
+
                 ["Area", selectedRequest.area || "Not specified"],
+
                 ["Created", formatDate(selectedRequest.createdAt)],
+
                 [
                   "Required by",
+
                   selectedRequest.requiredBy
                     ? formatDate(selectedRequest.requiredBy)
                     : "Not specified",
                 ],
+
                 [
                   "Donor responses",
+
                   `${selectedRequest.matchedDonors?.length ?? 0}`,
                 ],
+
                 [
                   "Fulfillment progress",
+
                   selectedRequest.status === "Fulfilled"
                     ? "Fulfilled"
                     : displayStatus(selectedRequest.status),
@@ -692,7 +778,7 @@ export default function HospitalRequests() {
       {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
-          onClick={closeForm}
+          onClick={() => closeForm()}
         >
           <section
             role="dialog"
@@ -716,7 +802,7 @@ export default function HospitalRequests() {
                   coordination.
                 </p>
               </div>
-              <button onClick={closeForm} aria-label="Close form">
+              <button onClick={() => closeForm()} aria-label="Close form">
                 <X size={18} />
               </button>
             </div>
@@ -732,6 +818,7 @@ export default function HospitalRequests() {
                   onChange={(event) =>
                     setForm({
                       ...form,
+
                       bloodGroup: event.target.value as BloodGroup,
                     })
                   }
@@ -851,6 +938,7 @@ export default function HospitalRequests() {
                     type="button"
                     onClick={() => {
                       setRequestLocation(registeredLocation)
+
                       setRequestLocationAddress(registeredAddress)
                     }}
                     disabled={!registeredLocation}
@@ -865,8 +953,10 @@ export default function HospitalRequests() {
                   onChange={(value) => {
                     setRequestLocation({
                       latitude: value.latitude,
+
                       longitude: value.longitude,
                     })
+
                     setRequestLocationAddress(value.address)
                   }}
                 />
@@ -874,7 +964,7 @@ export default function HospitalRequests() {
               <div className="flex justify-end gap-2 sm:col-span-2">
                 <button
                   type="button"
-                  onClick={closeForm}
+                  onClick={() => closeForm()}
                   className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
                 >
                   Close

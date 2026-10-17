@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { FileCheck, CheckCircle, Clock } from "lucide-react";
 import DashboardLayout, { PageHeader } from "../../components/layout/DashboardLayout";
@@ -7,13 +7,31 @@ import Button from "../../components/ui/Button";
 import { useApp } from "../../context/AppContext";
 
 export default function NGOVerification() {
-  const { requests, verifyRequest } = useApp();
+  const { requests, requestFeedError, verifyRequest } = useApp();
+  const [actionError, setActionError] = useState<string | null>(null);
   const pending = requests.filter((r) => r.status === "Verification Pending");
-  const verified = requests.filter((r) => r.verifiedBy === "UPAY Community Network");
+  const verified = requests.filter((r) => Boolean(r.verifiedBy));
+  const handleVerify = async (requestId: string) => {
+    setActionError(null);
+    try {
+      await verifyRequest(requestId);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Unable to verify this request.",
+      );
+    }
+  };
 
   return (
     <DashboardLayout>
       <PageHeader title="Request Verification" subtitle="Review and verify incoming blood requests before donor outreach." />
+      {(requestFeedError || actionError) && (
+        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {requestFeedError
+            ? `Requests could not be loaded: ${requestFeedError}`
+            : actionError}
+        </p>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Pending */}
@@ -38,12 +56,19 @@ export default function NGOVerification() {
                       <span className="font-mono text-xs text-[#021734]/40">{req.id}</span>
                     </div>
                     <p className="font-semibold text-[#021734] text-sm">{req.bloodGroup} · {req.units} units</p>
-                    <p className="text-xs text-[#021734]/50 mt-1">{req.hospitalName} · {req.area}</p>
+                    <p className="text-xs text-[#021734]/50 mt-1">
+                      {req.hospitalName} · {req.area || req.locationAddress || "Location not specified"}
+                    </p>
+                    <p className="text-xs text-[#021734]/40 mt-1">
+                      Required by: {req.requiredBy
+                        ? new Date(req.requiredBy).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+                        : "As soon as possible"}
+                    </p>
                     {req.notes && <p className="text-xs text-[#021734]/40 mt-2 bg-[#F0F6F8] p-2 rounded-lg italic">"{req.notes}"</p>}
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => verifyRequest(req.id)} className="flex-1">
+                  <Button size="sm" onClick={() => void handleVerify(req.id)} className="flex-1">
                     <CheckCircle size={13} /> Verify Request
                   </Button>
                   <Button size="sm" variant="outline">Request More Info</Button>
@@ -60,7 +85,7 @@ export default function NGOVerification() {
         <div>
           <h2 className="text-base font-display font-bold text-[#021734] mb-4 flex items-center gap-2">
             <FileCheck size={16} className="text-[#036D7D]" />
-            Verified by UPAY ({verified.length})
+            Verified ({verified.length})
           </h2>
           <div className="space-y-3">
             {verified.map((req, i) => (

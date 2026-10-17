@@ -237,7 +237,7 @@ begin
   );
 
   if user_role = 'hospital' then
-    if coalesce(new.raw_user_meta_data ->> 'hospital_name', '') = '' then
+    if nullif(btrim(new.raw_user_meta_data ->> 'hospital_name'), '') is null then
       raise exception 'Missing hospital registration data';
     end if;
     insert into public.hospitals (
@@ -248,7 +248,7 @@ begin
     values (
       new.id,
       new.id,
-      coalesce(new.raw_user_meta_data ->> 'hospital_name', new.raw_user_meta_data ->> 'full_name'),
+      btrim(new.raw_user_meta_data ->> 'hospital_name'),
       new.raw_user_meta_data ->> 'hospital_type',
       new.raw_user_meta_data ->> 'registration_id',
       new.raw_user_meta_data ->> 'contact_person',
@@ -262,7 +262,7 @@ begin
       new.raw_user_meta_data ->> 'registration_certificate'
     );
   elsif user_role = 'ngo' then
-    if coalesce(new.raw_user_meta_data ->> 'organisation_name', '') = '' then
+    if nullif(btrim(new.raw_user_meta_data ->> 'organisation_name'), '') is null then
       raise exception 'Missing NGO registration data';
     end if;
     insert into public.ngos (
@@ -273,7 +273,7 @@ begin
     values (
       new.id,
       new.id,
-      coalesce(new.raw_user_meta_data ->> 'organisation_name', new.raw_user_meta_data ->> 'full_name'),
+      btrim(new.raw_user_meta_data ->> 'organisation_name'),
       new.raw_user_meta_data ->> 'registration_number',
       new.raw_user_meta_data ->> 'organisation_type',
       new.raw_user_meta_data ->> 'contact_person',
@@ -409,12 +409,47 @@ create policy "Users can manage their NGO record" on public.ngos for all using (
 drop policy if exists "Users can manage their donor record" on public.donors;
 create policy "Users can manage their donor record" on public.donors for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Authenticated users can read requests" on public.blood_requests for select to authenticated using (true);
-create policy "Hospitals can create requests" on public.blood_requests for insert to authenticated with check (auth.uid() = hospital_id);
-create policy "Hospitals can update their requests" on public.blood_requests for update to authenticated using (auth.uid() = hospital_id) with check (auth.uid() = hospital_id);
+create policy "Hospitals can create requests" on public.blood_requests for insert to authenticated with check (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = blood_requests.hospital_id and h.user_id = auth.uid()
+  )
+);
+create policy "Hospitals can update their requests" on public.blood_requests for update to authenticated using (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = blood_requests.hospital_id and h.user_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = blood_requests.hospital_id and h.user_id = auth.uid()
+  )
+);
 drop policy if exists "Hospitals can manage their patients" on public.patients;
-create policy "Hospitals can manage their patients" on public.patients for all to authenticated using (auth.uid() = hospital_id) with check (auth.uid() = hospital_id);
+create policy "Hospitals can manage their patients" on public.patients for all to authenticated using (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = patients.hospital_id and h.user_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = patients.hospital_id and h.user_id = auth.uid()
+  )
+);
 drop policy if exists "Hospitals can manage their notification preferences" on public.hospital_notification_preferences;
-create policy "Hospitals can manage their notification preferences" on public.hospital_notification_preferences for all to authenticated using (auth.uid() = hospital_id) with check (auth.uid() = hospital_id);
+create policy "Hospitals can manage their notification preferences" on public.hospital_notification_preferences for all to authenticated using (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = hospital_notification_preferences.hospital_id and h.user_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1 from public.hospitals h
+    where h.id = hospital_notification_preferences.hospital_id and h.user_id = auth.uid()
+  )
+);
 drop policy if exists "Donors can manage their own responses" on public.donor_responses;
 create policy "Donors can manage their own responses" on public.donor_responses for all to authenticated using (
   exists (select 1 from public.donors d where d.id = donor_id and d.user_id = auth.uid())
@@ -423,7 +458,12 @@ create policy "Donors can manage their own responses" on public.donor_responses 
 );
 drop policy if exists "Hospitals can view responses to their requests" on public.donor_responses;
 create policy "Hospitals can view responses to their requests" on public.donor_responses for select to authenticated using (
-  exists (select 1 from public.blood_requests r where r.id = request_id and r.hospital_id = auth.uid())
+  exists (
+    select 1
+    from public.blood_requests r
+    join public.hospitals h on h.id = r.hospital_id
+    where r.id = request_id and h.user_id = auth.uid()
+  )
 );
 create policy "Participants can read messages" on public.messages for select to authenticated using (auth.uid() = sender_id or auth.uid() = recipient_id);
 create policy "Users can send messages" on public.messages for insert to authenticated with check (auth.uid() = sender_id);

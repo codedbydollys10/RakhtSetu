@@ -14,24 +14,34 @@ import type { BloodRequest } from "../../data/mockData"
 
 type Range = "7" | "30" | "90" | "custom"
 
-type ResponseRecord = { request_id: string responded_at: string }
+type ResponseRecord = {
+  request_id: string
+  responded_at: string
+}
 
 function inProgress(request: BloodRequest) {
   return [
     "Donor Confirmed",
+
     "Hospital Confirmation",
+
     "Matching",
+
     "Donors Contacted",
   ].includes(request.status)
 }
 
 function BarGroup({
   title,
+
   entries,
+
   color = "bg-rose-500",
 }: {
   title: string
+
   entries: [string, number][]
+
   color?: string
 }) {
   const max = Math.max(1, ...entries.map(([, value]) => value))
@@ -63,7 +73,7 @@ function BarGroup({
 }
 
 export default function HospitalReports() {
-  const { requests, currentUser, hospitalRequestsLoading } = useApp()
+  const { requests, hospitalRecordId, hospitalRequestsLoading } = useApp()
 
   const [range, setRange] = useState<Range>("30")
 
@@ -78,8 +88,9 @@ export default function HospitalReports() {
   const [loadingResponses, setLoadingResponses] = useState(false)
 
   const ownRequests = useMemo(
-    () => requests.filter((request) => request.hospitalId === currentUser?.id),
-    [requests, currentUser?.id],
+    () => requests.filter((request) => request.hospitalId === hospitalRecordId),
+
+    [requests, hospitalRecordId],
   )
 
   useEffect(() => {
@@ -89,15 +100,20 @@ export default function HospitalReports() {
 
     if (!ids.length) {
       setResponses([])
+
       setLoadingResponses(false)
+
       return
     }
 
     setLoadingResponses(true)
 
     void supabase
+
       .from("donor_responses")
+
       .select("request_id,responded_at")
+
       .in("request_id", ids)
 
       .then(({ data, error }) => {
@@ -106,6 +122,7 @@ export default function HospitalReports() {
         if (error) setResponseError(error.message)
         else {
           setResponseError(null)
+
           setResponses((data ?? []) as ResponseRecord[])
         }
 
@@ -173,6 +190,7 @@ export default function HospitalReports() {
 
     const key = date.toLocaleDateString("en-IN", {
       day: "2-digit",
+
       month: "short",
     })
 
@@ -184,6 +202,7 @@ export default function HospitalReports() {
   const statusEntries: [string, number][] = [
     [
       "Active",
+
       filtered.filter(
         (request) =>
           !["Fulfilled", "Cancelled"].includes(request.status) &&
@@ -197,6 +216,7 @@ export default function HospitalReports() {
 
     [
       "Cancelled",
+
       filtered.filter((request) => request.status === "Cancelled").length,
     ],
   ]
@@ -249,8 +269,11 @@ export default function HospitalReports() {
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Total Requests", filtered.length],
+
           ["Successful Fulfillments", fulfilled],
+
           ["Average Response Time", loadingResponses ? "…" : averageResponse],
+
           ["Fulfillment Rate", `${fulfillmentRate}%`],
         ].map(([title, value]) => (
           <article
@@ -302,6 +325,7 @@ export default function HospitalReports() {
             title="Blood group demand"
             entries={groups.map((group) => [
               group,
+
               filtered.filter((request) => request.bloodGroup === group).length,
             ])}
             color="bg-violet-500"
@@ -311,16 +335,21 @@ export default function HospitalReports() {
             entries={[
               [
                 "Critical",
+
                 filtered.filter((request) => request.urgency === "CRITICAL")
                   .length,
               ],
+
               [
                 "High",
+
                 filtered.filter((request) => request.urgency === "URGENT")
                   .length,
               ],
+
               [
                 "Normal",
+
                 filtered.filter((request) => request.urgency === "NORMAL")
                   .length,
               ],

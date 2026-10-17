@@ -1,133 +1,236 @@
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { Zap, MapPin, CheckCircle, AlertCircle } from "lucide-react";
-import DashboardLayout, { PageHeader } from "../../components/layout/DashboardLayout";
-import Badge from "../../components/ui/Badge";
-import Button from "../../components/ui/Button";
-import { UrgencyBadge } from "../../components/ui/Badge";
-import { useApp } from "../../context/AppContext";
+import { useEffect, useState } from "react"
+
+import { motion } from "framer-motion"
+
+import { AlertCircle, CheckCircle, MapPin } from "lucide-react"
+
+import DashboardLayout, {
+  PageHeader,
+} from "../../components/layout/DashboardLayout"
+
+import { UrgencyBadge } from "../../components/ui/Badge"
+
+import { useApp } from "../../context/AppContext"
+
+import { supabase } from "../../lib/supabase"
+
+type DonorMatch = {
+  donor_id: string
+
+  blood_group: string
+
+  city: string | null
+
+  notified: boolean
+
+  response_status: string | null
+}
 
 export default function NGOMatching() {
-  const { requests, donors, contactDonor, updateRequestStatus } = useApp();
-  const [selectedReq, setSelectedReq] = useState<string | null>(null);
-  const [contacted, setContacted] = useState<string[]>([]);
-  const verifiedReqs = requests.filter((r) => ["Verified", "Matching", "Donors Contacted"].includes(r.status));
+  const { requests, requestFeedError } = useApp()
 
-  const getMatches = (req: typeof requests[0]) => {
-    return donors
-      .filter((d) => {
-        if (!d.available) return false;
-        const compatible: Record<string, string[]> = {
-          "O+": ["O+", "O-"], "O-": ["O-"], "A+": ["A+", "A-", "O+", "O-"],
-          "A-": ["A-", "O-"], "B+": ["B+", "B-", "O+", "O-"], "B-": ["B-", "O-"],
-          "AB+": ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"],
-          "AB-": ["A-", "B-", "O-", "AB-"],
-        };
-        return compatible[req.bloodGroup]?.includes(d.bloodGroup);
-      })
-      .sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
-  };
+  const [selectedReq, setSelectedReq] = useState<string | null>(null)
 
-  const handleContact = (donorId: string, reqId: string) => {
-    contactDonor(donorId, reqId, "UPAY Community Network");
-    setContacted((c) => [...c, `${donorId}:${reqId}`]);
-    updateRequestStatus(reqId, "Donors Contacted");
-  };
+  const [matches, setMatches] = useState<DonorMatch[]>([])
+
+  const [loading, setLoading] = useState(false)
+
+  const [error, setError] = useState<string | null>(null)
+
+  const verifiedReqs = requests.filter((request) =>
+    [
+      "Verified",
+      "Matching",
+      "Donors Contacted",
+      "Donor Confirmed",
+      "Hospital Confirmation",
+    ].includes(request.status),
+  )
+
+  useEffect(() => {
+    if (!selectedReq) {
+      setMatches([])
+
+      setError(null)
+
+      return
+    }
+
+    let active = true
+
+    setLoading(true)
+
+    setError(null)
+
+    void supabase
+
+      .rpc("get_ngo_donor_matches", { p_request_id: selectedReq })
+
+      .then(
+        ({ data, error: matchError }) => {
+          if (!active) return
+
+          if (matchError) {
+            setError(matchError.message)
+
+            setMatches([])
+          } else {
+            setMatches((data ?? []) as DonorMatch[])
+          }
+
+          setLoading(false)
+        },
+        (matchError: unknown) => {
+          if (!active) return
+          setError(
+            matchError instanceof Error
+              ? matchError.message
+              : "Donor matches could not be loaded.",
+          )
+          setMatches([])
+          setLoading(false)
+        },
+      )
+
+    return () => {
+      active = false
+    }
+  }, [selectedReq])
 
   return (
     <DashboardLayout>
-      <PageHeader title="Donor Matching" subtitle="AI-assisted coordination matching — not medical eligibility determination." />
+      <PageHeader
+        title="Donor Matching"
+        subtitle="Eligible donors are notified automatically after your NGO verifies a request."
+      />
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Request selector */}
-        <div>
-          <h2 className="text-sm font-semibold text-[#021734] mb-3">Select a Request to Match</h2>
+      {(requestFeedError || error) && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+        >
+          {requestFeedError
+            ? `Requests could not be loaded: ${requestFeedError}`
+            : `Donor matches could not be loaded: ${error}`}
+        </p>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-[#021734]">
+            Select a verified request
+          </h2>
           <div className="space-y-2">
             {verifiedReqs.length === 0 ? (
-              <div className="bg-white rounded-xl border border-[#C0D2DE]/60 p-8 text-center">
-                <p className="text-sm text-[#021734]/50">No verified requests to match.</p>
-                <p className="text-xs text-[#021734]/30 mt-1">Verify requests first in the Verification tab.</p>
-              </div>
-            ) : verifiedReqs.map((req) => (
-              <button key={req.id} onClick={() => setSelectedReq(req.id === selectedReq ? null : req.id)}
-                className={`w-full text-left bg-white rounded-xl border p-4 transition-all ${selectedReq === req.id ? "border-[#036D7D] ring-2 ring-[#036D7D]/30" : "border-[#C0D2DE]/60 hover:border-[#036D7D]/40"}`}>
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <UrgencyBadge urgency={req.urgency} />
-                  <span className="font-mono text-xs text-[#021734]/40">{req.id}</span>
-                </div>
-                <p className="text-sm font-semibold text-[#021734]">{req.bloodGroup} · {req.units} units</p>
-                <p className="text-xs text-[#021734]/50">{req.hospitalName}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Matches */}
-        <div>
-          <h2 className="text-sm font-semibold text-[#021734] mb-3">
-            {selectedReq ? `Matched Donors for ${selectedReq}` : "Select a request to see matches"}
-          </h2>
-          {selectedReq && (() => {
-            const req = requests.find((r) => r.id === selectedReq)!;
-            const matches = getMatches(req);
-            return (
-              <div className="space-y-3">
-                <p className="text-xs text-[#021734]/40 italic bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                  Coordination score — not medical eligibility. Final decisions rest with authorised medical professionals.
+              <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-8 text-center">
+                <p className="text-sm text-[#021734]/50">
+                  No verified requests to match.
                 </p>
-                {matches.length === 0 ? (
-                  <div className="bg-white rounded-xl border border-[#C0D2DE]/60 p-6 text-center">
-                    <AlertCircle size={24} className="text-[#C0D2DE] mx-auto mb-2" />
-                    <p className="text-sm text-[#021734]/50">No available donors match this blood group.</p>
-                  </div>
-                ) : matches.map((d, i) => {
-                  const alreadyContacted = contacted.includes(`${d.id}:${selectedReq}`);
-                  const contactedElsewhere = d.contactedBy?.some(c => c.includes(selectedReq) && !c.includes("UPAY")) || false;
-                  return (
-                    <motion.div key={d.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
-                      className="bg-white rounded-xl border border-[#C0D2DE]/60 p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#021734] text-white flex items-center justify-center font-bold flex-shrink-0">
-                          {d.name[0]}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold text-[#021734]">{d.name}</p>
-                            <Badge variant="active" label="Available" />
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-[#021734]/50 mt-0.5 flex-wrap">
-                            <span className="font-mono text-[#036D7D]">{d.bloodGroup}</span>
-                            <span className="flex items-center gap-1"><MapPin size={10} />{d.area}</span>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xl font-display font-bold text-[#036D7D]">{d.matchScore}%</p>
-                        </div>
-                      </div>
-
-                      {contactedElsewhere ? (
-                        <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                          <AlertCircle size={12} />
-                          Already contacted for {selectedReq} by another NGO
-                        </div>
-                      ) : alreadyContacted ? (
-                        <div className="mt-3 flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg">
-                          <CheckCircle size={12} />
-                          Donor contacted — awaiting response
-                        </div>
-                      ) : (
-                        <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => handleContact(d.id, req.id)}>
-                          <Zap size={12} /> Contact Donor
-                        </Button>
-                      )}
-                    </motion.div>
-                  );
-                })}
+                <p className="mt-1 text-xs text-[#021734]/30">
+                  Verify an assigned request first.
+                </p>
               </div>
-            );
-          })()}
-        </div>
+            ) : (
+              verifiedReqs.map((request) => (
+                <button
+                  key={request.id}
+                  onClick={() =>
+                    setSelectedReq(
+                      request.id === selectedReq ? null : request.id,
+                    )
+                  }
+                  className={`w-full rounded-xl border bg-white p-4 text-left transition-all ${
+                    selectedReq === request.id
+                      ? "border-[#036D7D] ring-2 ring-[#036D7D]/30"
+                      : "border-[#C0D2DE]/60 hover:border-[#036D7D]/40"
+                  }`}
+                >
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <UrgencyBadge urgency={request.urgency} />
+                    <span className="font-mono text-xs text-[#021734]/40">
+                      {request.id}
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-[#021734]">
+                    {request.bloodGroup} · {request.units} units
+                  </p>
+                  <p className="text-xs text-[#021734]/50">
+                    {request.hospitalName} · {request.area}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-[#021734]">
+            {selectedReq
+              ? `Eligible donors (${matches.length})`
+              : "Select a request to see eligible donors"}
+          </h2>
+          {!selectedReq ? (
+            <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-6 text-center text-xs text-[#021734]/40">
+              Donors are matched using compatible blood groups, verified
+              eligibility, availability, consent, and approximate distance.
+            </div>
+          ) : loading ? (
+            <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-6 text-sm text-[#021734]/50">
+              Loading eligible donor matches…
+            </div>
+          ) : matches.length === 0 ? (
+            <div className="rounded-xl border border-[#C0D2DE]/60 bg-white p-6 text-center">
+              <AlertCircle size={24} className="mx-auto mb-2 text-[#C0D2DE]" />
+              <p className="text-sm text-[#021734]/50">
+                No currently eligible donors match this request.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs italic text-[#021734]/60">
+                Matching is for coordination only, not medical eligibility.
+                Donor names, contact details, and precise locations are not
+                shared.
+              </p>
+              {matches.map((match, index) => (
+                <motion.article
+                  key={match.donor_id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04 }}
+                  className="rounded-xl border border-[#C0D2DE]/60 bg-white p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EAF0F5] text-[#062847]">
+                      <CheckCircle size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-[#021734]">
+                        Eligible donor
+                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#021734]/50">
+                        <span className="font-mono text-[#036D7D]">
+                          {match.blood_group}
+                        </span>
+                        {match.city && (
+                          <span className="flex items-center gap-1">
+                            <MapPin size={10} />
+                            {match.city}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                      {match.response_status ??
+                        (match.notified ? "Notified" : "Matched")}
+                    </span>
+                  </div>
+                </motion.article>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </DashboardLayout>
-  );
+  )
 }
