@@ -37,6 +37,12 @@ export interface DonorProfileEdits {
   area?: string
 
   emergencyContact?: string
+
+  latitude?: number | null
+
+  longitude?: number | null
+
+  mapLocation?: string
 }
 
 export interface DonorSettings {
@@ -94,7 +100,7 @@ interface DonorPortalContextValue extends DonorPortalData {
     status: DonorResponseStatus,
   ) => Promise<void>
 
-  updateProfile: (profile: DonorProfileEdits) => void
+  updateProfile: (profile: DonorProfileEdits) => Promise<void>
 
   updateSettings: (settings: DonorSettings) => void
 
@@ -150,7 +156,12 @@ const emptyData: DonorPortalData = {
 const DonorPortalContext = createContext<DonorPortalContextValue | null>(null)
 
 export function DonorPortalProvider({ children }: { children: ReactNode }) {
-  const { currentUser, donorRecordId, refreshRequests } = useApp()
+  const {
+    currentUser,
+    donorRecordId,
+    refreshRequests,
+    updateDonorProfile,
+  } = useApp()
 
   const userId = currentUser?.id ?? "guest"
 
@@ -173,6 +184,8 @@ export function DonorPortalProvider({ children }: { children: ReactNode }) {
           ...parsed,
 
           responses: [],
+
+          profile: {},
 
           settings: { ...defaultSettings, ...parsed.settings },
         })
@@ -284,7 +297,7 @@ export function DonorPortalProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(
         `${STORAGE_PREFIX}${userId}`,
 
-        JSON.stringify({ ...data, responses: [] }),
+        JSON.stringify({ ...data, profile: {}, responses: [] }),
       )
     } catch (error) {
       console.warn("Unable to save donor portal preferences:", error)
@@ -403,12 +416,46 @@ export function DonorPortalProvider({ children }: { children: ReactNode }) {
         }))
       },
 
-      updateProfile: (profile) =>
+      updateProfile: async (profile) => {
+        if (
+          !profile.name?.trim() ||
+          !profile.bloodGroup ||
+          profile.phone === undefined ||
+          profile.city === undefined ||
+          profile.area === undefined ||
+          profile.emergencyContact === undefined ||
+          profile.latitude === undefined ||
+          profile.longitude === undefined ||
+          profile.mapLocation === undefined ||
+          ((profile.latitude === null) !== (profile.longitude === null))
+        ) {
+          throw new Error("Complete the required donor profile details.")
+        }
+
+        await updateDonorProfile({
+          name: profile.name,
+          phone: profile.phone,
+          bloodGroup: profile.bloodGroup,
+          city: profile.city,
+          area: profile.area,
+          emergencyContact: profile.emergencyContact,
+          latitude: profile.latitude,
+          longitude: profile.longitude,
+          mapLocation: profile.mapLocation,
+        })
+
+        void refreshRequests().catch((refreshError: unknown) => {
+          console.error(
+            "Donor profile saved, but matching requests could not be refreshed:",
+            refreshError,
+          )
+        })
+
         setData((current) => ({
           ...current,
-
           profile: { ...current.profile, ...profile },
-        })),
+        }))
+      },
 
       updateSettings: (settings) =>
         setData((current) => ({ ...current, settings })),
@@ -459,7 +506,14 @@ export function DonorPortalProvider({ children }: { children: ReactNode }) {
       },
     }),
 
-    [data, loadedUserId, userId, currentUser?.id, refreshRequests],
+    [
+      data,
+      loadedUserId,
+      userId,
+      currentUser?.id,
+      refreshRequests,
+      updateDonorProfile,
+    ],
   )
 
   return (

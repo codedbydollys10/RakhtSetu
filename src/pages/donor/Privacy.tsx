@@ -15,7 +15,7 @@ export default function DonorPrivacy() {
 
   return (
     <DashboardLayout>
-      <PageHeader title="Privacy Controls" subtitle="Control what information is shared with verified organisations." />
+      <PageHeader title="Privacy Controls" subtitle="Control what information is shared with partner organisations." />
       <div className="max-w-xl space-y-5">
         <div className="bg-[#021734] rounded-xl p-5 flex items-start gap-4">
           <Shield size={20} className="text-[#79C3D0] flex-shrink-0 mt-0.5" />
@@ -31,7 +31,7 @@ export default function DonorPrivacy() {
         <div className="bg-white rounded-xl border border-[#C0D2DE]/60 divide-y divide-[#C0D2DE]/40">
           {[
             { key: "showArea" as const, label: "Show my area", desc: "Organisations can see your neighbourhood (e.g. Andheri) for coordination" },
-            { key: "allowContact" as const, label: "Allow contact requests", desc: "Verified NGOs can contact you for matching blood requests" },
+            { key: "allowContact" as const, label: "Allow contact requests", desc: "NGOs can contact you for matching blood requests" },
             { key: "showDonationCount" as const, label: "Show donation history count", desc: "Show total number of prior donations to partner organisations" },
             { key: "allowReEngagement" as const, label: "Allow re-engagement outreach", desc: "If inactive, allow NGOs to send a single re-engagement message" },
           ].map(({ key, label, desc }) => (

@@ -29,14 +29,14 @@ const fields: {
     section: "Notifications",
     key: "nearbyNotifications",
     label: "Nearby request alerts",
-    description: "Receive updates about verified needs in your area.",
+    description: "Receive updates about matching needs in your area.",
   },
 
   {
     section: "Notifications",
     key: "communityUpdates",
     label: "Community updates",
-    description: "Hear about local donor drives and verified network activity.",
+    description: "Hear about local donor drives and network activity.",
   },
 
   {
@@ -49,7 +49,7 @@ const fields: {
   {
     section: "Privacy",
     key: "showAvailability",
-    label: "Show availability to verified requests",
+    label: "Show my availability to matching requests",
     description:
       "Let approved hospitals and coordinators know whether you can be contacted.",
   },
@@ -65,9 +65,9 @@ const fields: {
   {
     section: "Privacy",
     key: "allowVerifiedContact",
-    label: "Allow verified hospital contact",
+    label: "Allow hospital contact",
     description:
-      "Allow verified organisations to contact you for coordination.",
+      "Allow hospitals and NGOs to contact you for coordination.",
   },
 ]
 

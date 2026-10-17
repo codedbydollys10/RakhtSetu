@@ -1,5 +1,7 @@
 export type BloodGroup = "O+" | "O-" | "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-"
 
+export type BloodComponent = "WHOLE_BLOOD" | "PLATELETS" | "PLASMA" | "OTHER"
+
 export type Urgency = "CRITICAL" | "URGENT" | "NORMAL"
 
 export type RequestStatus = "Created" | "Verification Pending" | "Verified" | "Matching" | "Donors Contacted" | "Donor Confirmed" | "Hospital Confirmation" | "Fulfilled" | "Cancelled"
@@ -17,10 +19,10 @@ export interface Donor {
 
   area: string
 
-  department?: string
-  requiredBy?: string
   latitude?: number
+
   longitude?: number
+
   locationAddress?: string
 
   city: string
@@ -85,6 +87,10 @@ export interface BloodRequest {
 
   bloodGroup: BloodGroup
 
+  component?: BloodComponent
+
+  searchRadiusKm?: number
+
   units: number
 
   urgency: Urgency
@@ -92,21 +98,46 @@ export interface BloodRequest {
   status: RequestStatus
 
   createdAt: string
+
   fulfilledAt?: string
 
+  validDonorResponseCount?: number
+
+  verifiedDonationCount?: number
+
+  donationCompletedAndVerified?: boolean
+
+  fulfillmentQualified?: boolean
+
+  donationCompletedAt?: string
+
+  donationVerifiedBy?: string
+
+  fulfillmentReviewRequired?: boolean
+
   area: string
+
   department?: string
+
   requiredBy?: string
+
   latitude?: number
+
   longitude?: number
+
   locationAddress?: string
+
+  hospitalContactPerson?: string
+
+  hospitalContactPhone?: string
+
+  hospitalContactEmail?: string
+
   distanceKm?: number
 
   patientAge?: number
 
   notes?: string
-
-  verifiedBy?: string
 
   matchedDonors?: string[]
 
@@ -130,11 +161,13 @@ export interface Message {
 export interface Notification {
   id: string
 
-  type: "request" | "match" | "verified" | "message" | "system"
+  type: "request" | "match" | "verified" | "message" | "system" | `donor_response_${string}` | `ngo_potential_donor_${string}` | `ngo_unable_to_help_${string}`
 
   title: string
 
   body: string
+
+  requestId?: string | null
 
   timestamp: string
 
@@ -601,8 +634,6 @@ export const initialRequests: BloodRequest[] = [
 
     notes: "Emergency surgery — O+ required urgently",
 
-    verifiedBy: "UPAY Community Network",
-
     matchedDonors: ["d1", "d9"],
   },
 
@@ -626,8 +657,6 @@ export const initialRequests: BloodRequest[] = [
     area: "Bandra",
 
     notes: "Scheduled surgery tomorrow morning",
-
-    verifiedBy: "Rotary Blood Foundation",
 
     matchedDonors: ["d2", "d10"],
   },
@@ -667,13 +696,13 @@ export const initialRequests: BloodRequest[] = [
 
     urgency: "URGENT",
 
-    status: "Verification Pending",
+    status: "Matching",
 
     createdAt: "2026-09-16T10:00:00",
 
     area: "Andheri",
 
-    notes: "Rare group — immediate verification needed",
+    notes: "Rare blood group — urgent coordination requested",
   },
 
   {
@@ -694,8 +723,6 @@ export const initialRequests: BloodRequest[] = [
     createdAt: "2026-09-10T07:00:00",
 
     area: "Borivali",
-
-    verifiedBy: "UPAY Community Network",
 
     matchedDonors: ["d4"],
 
@@ -721,8 +748,6 @@ export const initialRequests: BloodRequest[] = [
 
     area: "Bandra",
 
-    verifiedBy: "Rotary Blood Foundation",
-
     confirmedDonor: "d6",
   },
 
@@ -745,8 +770,6 @@ export const initialRequests: BloodRequest[] = [
 
     area: "Kurla",
 
-    verifiedBy: "Jeevandhara Trust",
-
     confirmedDonor: "d7",
   },
 
@@ -768,8 +791,6 @@ export const initialRequests: BloodRequest[] = [
     createdAt: "2026-09-13T13:00:00",
 
     area: "Thane",
-
-    verifiedBy: "Jeevandhara Trust",
 
     matchedDonors: ["d5"],
   },
@@ -881,10 +902,6 @@ export const messages: Message[] = [
 
 export const requestLifecycleSteps: RequestStatus[] = [
   "Created",
-
-  "Verification Pending",
-
-  "Verified",
 
   "Matching",
 

@@ -2,11 +2,17 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
 
 import { supabase } from "../lib/supabase"
+import {
+  loadHospitalRequests,
+  resolveHospitalRecordId,
+} from "./hospitalRequestLoading"
+import { countValidUniqueDonorResponses } from "../lib/bloodRequestFulfillment"
 
 import {
   hospitals,
@@ -23,14 +29,6 @@ type Role = "hospital" | "ngo" | "donor" | null
 
 type RegistrationResult = {
   requiresEmailConfirmation: boolean
-
-  documentPath?: string
-}
-
-type RegistrationDocuments = {
-  ngo?: File | null
-
-  hospital?: File | null
 }
 
 type NGORequestRow = {
@@ -59,6 +57,12 @@ type NGORequestRow = {
   longitude: number | null
 
   location_address: string | null
+
+  hospital_contact_person: string | null
+
+  hospital_contact_phone: string | null
+
+  hospital_contact_email: string | null
 
   patient_age: number | null
 
@@ -97,6 +101,18 @@ type EligibleRequestRow = {
   verified_by: string | null
 
   distance_km: number | null
+}
+
+type HospitalFulfillmentSnapshot = {
+  request_id: string
+  valid_unique_response_count: number
+  verified_donation_count: number
+  required_units: number
+  donation_completed_and_verified: boolean
+  fulfillment_qualified: boolean
+  donation_completed_at: string | null
+  donation_verified_by: string | null
+  fulfillment_review_required: boolean
 }
 
 function isRateLimitError(error: unknown): boolean {
@@ -145,6 +161,7 @@ interface AppState {
 
   currentUser: {
     id: string
+
     name: string
   } | null
 
@@ -160,6 +177,27 @@ interface AppState {
     longitude: number
 
     address: string
+  }) => Promise<void>
+
+  updateHospitalProfile: (profile: {
+    hospital_name: string
+    hospital_type: string
+    street_address: string
+    city: string
+    phone: string
+    email: string
+  }) => Promise<void>
+
+  updateDonorProfile: (profile: {
+    name: string
+    phone: string
+    bloodGroup: Donor["bloodGroup"]
+    city: string
+    area: string
+    emergencyContact: string
+    latitude: number | null
+    longitude: number | null
+    mapLocation: string
   }) => Promise<void>
 
   authLoading: boolean
@@ -198,13 +236,9 @@ interface AppState {
     bloodGroup: string,
 
     consent: boolean,
-
-    documents?: RegistrationDocuments,
   ) => Promise<RegistrationResult>
 
   logout: () => void
-
-  verifyRequest: (requestId: string) => Promise<void>
 
   createRequest: (
     req: Omit<BloodRequest, "id" | "createdAt" | "status">,
@@ -212,6 +246,7 @@ interface AppState {
 
   updateRequestStatus: (
     requestId: string,
+
     status: RequestStatus,
   ) => Promise<void>
 
@@ -232,10 +267,10 @@ interface AppState {
   updateHospitalRequestDetails: (
     requestId: string,
 
-    values: Partial<Pick<BloodRequest, "bloodGroup" | "units" | "urgency" | "area" | "department" | "requiredBy" | "patientAge" | "notes" | "latitude" | "longitude" | "locationAddress">>,
+    values: Partial<Pick<BloodRequest, "bloodGroup" | "component" | "searchRadiusKm" | "units" | "urgency" | "area" | "department" | "requiredBy" | "patientAge" | "notes" | "latitude" | "longitude" | "locationAddress">>,
   ) => Promise<void>
 
-  toggleDonorAvailability: (donorId: string) => void
+  toggleDonorAvailability: (donorId: string) => Promise<void>
 
   markNotificationRead: (id: string) => Promise<void>
 
@@ -247,6 +282,12 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null)
 
 const VALID_ROLES = new Set(["hospital", "ngo", "donor"])
+
+type HospitalRequestErrorDetails = {
+  code?: string
+  message?: string
+  details?: string
+}
 
 const getRoleTable = (role: Exclude<Role, null>) =>
   role === "donor" ? "donors" : role === "ngo" ? "ngos" : "hospitals"
@@ -277,6 +318,7 @@ export async function syncCurrentUserProfile(userId: string) {
   const authUser = userData.user
 
   if (!authUser) throw new Error("Authentication is required.")
+
   if (authUser.id !== userId)
     throw new Error("The authenticated account does not match this profile.")
 
@@ -319,22 +361,28 @@ export async function syncCurrentUserProfile(userId: string) {
 
   const phone = existingProfile?.phone || metadata.phone || null
 
-  const { error: profileUpsertError } = await supabase
+  if (!existingProfile) {
+    const { error: profileInsertError } = await supabase
 
-    .from("profiles")
+      .from("profiles")
 
-    .upsert(
-      { id: userId, role: resolvedRole, full_name: fullName, email, phone },
+      .insert({
+        id: userId,
 
-      { onConflict: "id" },
-    )
+        role: resolvedRole,
 
-  if (profileUpsertError) {
-    console.error("PROFILE UPSERT ERROR", profileUpsertError)
+        full_name: fullName,
 
-    throw new Error(
-      "Registration failed while saving your profile. Please try again.",
-    )
+        email,
+
+        phone,
+      })
+
+    if (profileInsertError) {
+      console.error("PROFILE INSERT ERROR", profileInsertError)
+
+      throw profileInsertError
+    }
   }
 
   const roleTable = getRoleTable(resolvedRole)
@@ -353,10 +401,38 @@ export async function syncCurrentUserProfile(userId: string) {
     throw roleLookupError
   }
 
+  if (!roleRow && resolvedRole === "hospital") {
+    const { error: legacyLinkError } = await supabase
+      .from("hospitals")
+      .update({ user_id: userId })
+      .eq("id", userId)
+      .is("user_id", null)
+
+    if (legacyLinkError) throw legacyLinkError
+
+    const { data: linkedHospital, error: linkedHospitalError } = await supabase
+      .from("hospitals")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle()
+
+    if (linkedHospitalError) throw linkedHospitalError
+
+    if (linkedHospital) {
+      return {
+        role: resolvedRole,
+        name: fullName,
+        roleDetails: linkedHospital as Record<string, unknown>,
+      }
+    }
+  }
+
   if (roleRow) {
     return {
       role: resolvedRole,
+
       name: fullName,
+
       roleDetails: roleRow as Record<string, unknown>,
     }
   }
@@ -416,11 +492,6 @@ export async function syncCurrentUserProfile(userId: string) {
         : null,
 
       consent: Boolean(metadata.consent),
-
-      registration_certificate:
-        metadata.registration_certificate ||
-        metadata.registration_certificate_url ||
-        null,
     })
   }
 
@@ -515,10 +586,13 @@ export async function syncCurrentUserProfile(userId: string) {
   }
 
   const { data: insertedRole, error: roleInsertError } = await supabase
+
     .from(roleTable)
 
-    .upsert(rolePayload, { onConflict: "user_id" })
+    .insert(rolePayload)
+
     .select("*")
+
     .single()
 
   if (roleInsertError) {
@@ -535,7 +609,9 @@ export async function syncCurrentUserProfile(userId: string) {
 
   return {
     role: resolvedRole,
+
     name: fullName,
+
     roleDetails: insertedRole as Record<string, unknown>,
   }
 }
@@ -559,6 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     typeof roleDetails.id === "string"
       ? roleDetails.id
       : null
+
   const donorRecordId =
     role === "donor" &&
     currentUser?.id &&
@@ -584,6 +661,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [requestList, setRequestList] = useState<BloodRequest[]>([])
 
+  const hospitalRequestLoadVersion = useRef(0)
+
+  const lastHospitalRequestError = useRef<string | null>(null)
+
   const [notifList, setNotifList] = useState<Notification[]>([])
 
   const [notificationsError, setNotificationsError] = useState<string | null>(
@@ -593,125 +674,216 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [msgList] = useState(initialMessages)
 
   const refreshHospitalRequests = async () => {
-    if (!currentUser?.id) return
-    if (!hospitalRecordId) {
-      const error = new Error(
-        "Your hospital record is not linked to this account. Complete hospital registration before loading requests.",
-      )
-      setHospitalRequestsError(error.message)
-      setHospitalRequestsLoading(false)
-      throw error
-    }
+    if (authLoading) return
+
+    if (!currentUser?.id || role !== "hospital") return
+
+    const loadVersion = ++hospitalRequestLoadVersion.current
 
     setHospitalRequestsLoading(true)
 
     setHospitalRequestsError(null)
 
-    const { data, error } = await supabase
+    try {
+      let accountRoleDetails = roleDetails
+      if (
+        !resolveHospitalRecordId({
+          authLoading,
+          role,
+          userId: currentUser.id,
+          roleDetails: accountRoleDetails,
+        })
+      ) {
+        const { data: linkedHospital, error: linkedHospitalError } =
+          await supabase
+            .from("hospitals")
+            .select("*")
+            .eq("user_id", currentUser.id)
+            .maybeSingle()
 
-      .from("blood_requests")
+        if (linkedHospitalError) throw linkedHospitalError
+        if (loadVersion !== hospitalRequestLoadVersion.current) return
 
-      .select("*")
+        if (linkedHospital?.user_id === currentUser.id) {
+          accountRoleDetails = (linkedHospital as Record<string, unknown>)
+          setRoleDetails(accountRoleDetails)
+        }
+      }
 
-      .eq("hospital_id", hospitalRecordId)
+      const result = await loadHospitalRequests({
+        account: {
+          authLoading,
+          role,
+          userId: currentUser.id,
+          roleDetails: accountRoleDetails,
+        },
+        fetchRequests: async (ownedHospitalId) => {
+          const { data, error } = await supabase
+            .from("blood_requests")
+            .select("*")
+            .eq("hospital_id", ownedHospitalId)
+            .order("created_at", { ascending: false })
 
-      .order("created_at", { ascending: false })
+          return { data, error }
+        },
+      })
 
-    if (error) {
-      setHospitalRequestsError(error.message)
+      if (loadVersion !== hospitalRequestLoadVersion.current) return
 
-      setHospitalRequestsLoading(false)
+      if (result.state === "unregistered") {
+        setRequestList([])
+        setHospitalRequestsError(
+          "Your hospital record is not linked to this account. Complete hospital registration or ask an administrator to link the existing hospital record.",
+        )
+        return
+      }
+
+      if (result.state === "signed-out" || result.state === "not-hospital") {
+        setRequestList([])
+        return
+      }
+
+      if (result.state === "deferred") return
+
+      if (result.state === "failed") throw result.error
+
+      const data = result.requests
+      const requestIds = data.map((request) => request.id)
+
+      const responseResult = requestIds.length
+        ? await supabase
+            .from("donor_responses")
+            .select("request_id,donor_id,status")
+            .in("request_id", requestIds)
+        : { data: [], error: null }
+
+      if (loadVersion !== hospitalRequestLoadVersion.current) return
+
+      if (responseResult.error) throw responseResult.error
+      const fulfillmentResult = requestIds.length
+        ? await supabase.rpc("get_hospital_request_fulfillment", {
+            p_request_id: null,
+          })
+        : { data: [], error: null }
+
+      if (fulfillmentResult.error) throw fulfillmentResult.error
+
+      const fulfillmentByRequest = new Map(
+        ((fulfillmentResult.data ?? []) as HospitalFulfillmentSnapshot[]).map(
+          (snapshot) => [snapshot.request_id, snapshot],
+        ),
+      )
+
+      const responsesByRequest = new Map<string, {
+        donorId: string
+        status: string
+      }[]>()
+      ;(responseResult.data ?? []).forEach((response) => {
+        const current = responsesByRequest.get(response.request_id) ?? []
+        current.push({ donorId: response.donor_id, status: response.status })
+        responsesByRequest.set(response.request_id, current)
+      })
+
+      const hospitalRequests: BloodRequest[] = data.map((request) => ({
+        id: request.id,
+        hospitalId: request.hospital_id,
+        hospitalName:
+          typeof roleDetails?.hospital_name === "string"
+            ? roleDetails.hospital_name
+            : currentUser.name,
+        bloodGroup: request.blood_group as BloodRequest["bloodGroup"],
+        component: request.component as BloodRequest["component"],
+        searchRadiusKm: request.search_radius_km ?? 25,
+        units: request.units,
+        urgency: request.urgency as BloodRequest["urgency"],
+        status: request.status as RequestStatus,
+        createdAt: request.created_at,
+        fulfilledAt: request.fulfilled_at ?? undefined,
+        area: request.area ?? "",
+        department: request.department ?? undefined,
+        requiredBy: request.required_by ?? undefined,
+        latitude: request.latitude ?? undefined,
+        longitude: request.longitude ?? undefined,
+        locationAddress: request.location_address ?? undefined,
+        hospitalContactPerson: request.hospital_contact_person ?? undefined,
+        hospitalContactPhone: request.hospital_contact_phone ?? undefined,
+        hospitalContactEmail: request.hospital_contact_email ?? undefined,
+        patientAge: request.patient_age ?? undefined,
+        notes: request.notes ?? undefined,
+        validDonorResponseCount:
+          fulfillmentByRequest.get(request.id)?.valid_unique_response_count ??
+          countValidUniqueDonorResponses(
+            (responsesByRequest.get(request.id) ?? []).map((response) => ({
+              donor_id: response.donorId,
+              response_status: response.status,
+            })),
+          ),
+        verifiedDonationCount:
+          fulfillmentByRequest.get(request.id)?.verified_donation_count ?? 0,
+        donationCompletedAndVerified:
+          fulfillmentByRequest.get(request.id)
+            ?.donation_completed_and_verified ?? false,
+        fulfillmentQualified:
+          fulfillmentByRequest.get(request.id)?.fulfillment_qualified ?? false,
+        donationCompletedAt:
+          fulfillmentByRequest.get(request.id)?.donation_completed_at ??
+          undefined,
+        donationVerifiedBy:
+          fulfillmentByRequest.get(request.id)?.donation_verified_by ??
+          undefined,
+        fulfillmentReviewRequired:
+          fulfillmentByRequest.get(request.id)?.fulfillment_review_required ??
+          false,
+        matchedDonors: [
+          ...new Set([
+            ...(request.matched_donor ? [request.matched_donor] : []),
+            ...(responsesByRequest.get(request.id) ?? [])
+              .filter((response) =>
+                [
+                  "Response Sent",
+                  "Hospital Confirmed",
+                  "Coordination in Progress",
+                  "Completed",
+                ].includes(response.status),
+              )
+              .map((response) => response.donorId),
+          ]),
+        ],
+      }))
+
+      lastHospitalRequestError.current = null
+      setRequestList(hospitalRequests)
+    } catch (error) {
+      if (loadVersion !== hospitalRequestLoadVersion.current) return
+
+      const details =
+        error && typeof error === "object"
+          ? error as HospitalRequestErrorDetails
+          : null
+      const errorKey = [
+        details?.code,
+        details?.message,
+        details?.details,
+        error instanceof Error ? error.message : "",
+      ]
+        .filter(Boolean)
+        .join(":")
+
+      if (lastHospitalRequestError.current !== errorKey) {
+        console.error("Unable to load hospital requests:", error)
+        lastHospitalRequestError.current = errorKey
+      }
+
+      setHospitalRequestsError(
+        "Hospital requests could not be loaded. Check your connection or try again; if the problem continues, contact support.",
+      )
 
       throw error
+    } finally {
+      if (loadVersion === hospitalRequestLoadVersion.current) {
+        setHospitalRequestsLoading(false)
+      }
     }
-
-    const requestIds = (data ?? []).map((request) => request.id)
-
-    const responseResult = requestIds.length
-      ? await supabase
-
-          .from("donor_responses")
-
-          .select("request_id,donor_id,status")
-
-          .in("request_id", requestIds)
-      : { data: [], error: null }
-
-    if (responseResult.error) {
-      setHospitalRequestsError(responseResult.error.message)
-
-      setHospitalRequestsLoading(false)
-
-      throw responseResult.error
-    }
-
-    const responsesByRequest = new Map<string, {
-      donorId: string
-
-      status: string
-    }[]>()
-    ;(responseResult.data ?? []).forEach((response) => {
-      const current = responsesByRequest.get(response.request_id) ?? []
-
-      current.push({ donorId: response.donor_id, status: response.status })
-
-      responsesByRequest.set(response.request_id, current)
-    })
-
-    const hospitalRequests: BloodRequest[] = (data ?? []).map((request) => ({
-      id: request.id,
-
-      hospitalId: request.hospital_id,
-
-      hospitalName:
-        typeof roleDetails?.hospital_name === "string"
-          ? roleDetails.hospital_name
-          : currentUser.name,
-
-      bloodGroup: request.blood_group as BloodRequest["bloodGroup"],
-
-      units: request.units,
-
-      urgency: request.urgency as BloodRequest["urgency"],
-
-      status: request.status as RequestStatus,
-
-      createdAt: request.created_at,
-
-      fulfilledAt: request.fulfilled_at ?? undefined,
-
-      area: request.area ?? "",
-
-      department: request.department ?? undefined,
-
-      requiredBy: request.required_by ?? undefined,
-
-      latitude: request.latitude ?? undefined,
-
-      longitude: request.longitude ?? undefined,
-
-      locationAddress: request.location_address ?? undefined,
-
-      patientAge: request.patient_age ?? undefined,
-
-      notes: request.notes ?? undefined,
-
-      matchedDonors: [
-        ...new Set([
-          ...(request.matched_donor ? [request.matched_donor] : []),
-
-          ...(responsesByRequest.get(request.id) ?? [])
-
-            .filter((response) => response.status !== "Cancelled")
-
-            .map((response) => response.donorId),
-        ]),
-      ],
-    }))
-
-    setRequestList(hospitalRequests)
-
-    setHospitalRequestsLoading(false)
   }
 
   const refreshNGORequests = async () => {
@@ -760,16 +932,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       locationAddress: request.location_address ?? undefined,
 
+      hospitalContactPerson: request.hospital_contact_person ?? undefined,
+
+      hospitalContactPhone: request.hospital_contact_phone ?? undefined,
+
+      hospitalContactEmail: request.hospital_contact_email ?? undefined,
+
       patientAge: request.patient_age ?? undefined,
 
       notes: request.notes ?? undefined,
-
-      verifiedBy:
-        request.verified_by == null
-          ? undefined
-          : request.verified_by === currentUser.id
-            ? currentUser.name
-            : "Verified NGO",
 
       matchedDonors: request.matched_donor ? [request.matched_donor] : [],
     }))
@@ -778,19 +949,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!currentUser?.id) {
       setRequestList([])
-
       setRequestFeedError(null)
-
+      setHospitalRequestsError(null)
+      setHospitalRequestsLoading(false)
       return
     }
 
     const refresh = () => {
       if (role === "hospital") {
-        void refreshHospitalRequests().catch((error: unknown) => {
-          console.error("Unable to load hospital requests:", error)
-        })
+        void refreshHospitalRequests().catch(() => undefined)
       } else if (role === "ngo") {
         void refreshNGORequests().catch((error: unknown) => {
           console.error("Unable to load NGO requests:", error)
@@ -806,8 +977,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const interval = window.setInterval(refresh, 30000)
 
-    return () => window.clearInterval(interval)
-  }, [role, currentUser?.id, hospitalRecordId])
+    return () => {
+      window.clearInterval(interval)
+      hospitalRequestLoadVersion.current += 1
+    }
+  }, [authLoading, role, currentUser?.id, hospitalRecordId])
 
   useEffect(() => {
     if (!currentUser?.id) return
@@ -826,11 +1000,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ) => {
     if (!currentUser?.id || role !== "hospital")
       throw new Error("Sign in to a hospital account to post a request.")
+
     if (!hospitalRecordId) {
       throw new Error(
         "Your hospital profile is incomplete or not linked to this account. Ask an administrator to restore the hospital record before submitting requests.",
       )
     }
+
+    const { data: hospitalContact, error: hospitalContactError } =
+      await supabase
+        .from("hospitals")
+        .select("contact_person, phone, email")
+        .eq("id", hospitalRecordId)
+        .single()
+
+    if (hospitalContactError) throw hospitalContactError
 
     const { data, error } = await supabase
 
@@ -840,6 +1024,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         hospital_id: hospitalRecordId,
 
         blood_group: request.bloodGroup,
+
+        component: request.component ?? "WHOLE_BLOOD",
+
+        search_radius_km: request.searchRadiusKm ?? 25,
 
         units: request.units,
 
@@ -853,7 +1041,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         department: request.department ?? null,
 
-        required_by: request.requiredBy ?? null,
+        required_by: request.requiredBy?.trim() || null,
 
         latitude: request.latitude ?? null,
 
@@ -861,7 +1049,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         location_address: request.locationAddress ?? null,
 
-        status: "Verification Pending",
+        hospital_contact_person: hospitalContact.contact_person,
+
+        hospital_contact_phone: hospitalContact.phone,
+
+        hospital_contact_email: hospitalContact.email,
+
+        status: "Matching",
       })
 
       .select("*")
@@ -871,10 +1065,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) {
       console.error("Unable to create hospital blood request:", {
         code: error.code,
+
         message: error.message,
+
         details: error.details,
+
         hint: error.hint,
       })
+
       throw error
     }
 
@@ -884,6 +1082,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id: data.id,
 
       hospitalId: data.hospital_id,
+
+      component: data.component as BloodRequest["component"],
+
+      searchRadiusKm: data.search_radius_km ?? 25,
 
       hospitalName:
         typeof roleDetails?.hospital_name === "string"
@@ -899,6 +1101,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       longitude: data.longitude ?? undefined,
 
       locationAddress: data.location_address ?? undefined,
+
+      hospitalContactPerson: data.hospital_contact_person ?? undefined,
+
+      hospitalContactPhone: data.hospital_contact_phone ?? undefined,
+
+      hospitalContactEmail: data.hospital_contact_email ?? undefined,
 
       status: data.status as RequestStatus,
 
@@ -921,51 +1129,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ) => {
     if (!currentUser?.id || role !== "hospital")
       throw new Error("Sign in to a hospital account to update a request.")
+
     if (!hospitalRecordId)
       throw new Error("Your hospital record is not linked to this account.")
 
-    const { data, error } = await supabase
-
-      .from("blood_requests")
-
-      .update({
-        status,
-
-        fulfilled_at: status === "Fulfilled" ? new Date().toISOString() : null,
-      })
-
-      .eq("id", requestId)
-
-      .eq("hospital_id", hospitalRecordId)
-
-      .select("*")
-
-      .single()
-
-    if (error) throw error
-
-    setRequestList((current) =>
-      current.map((request) =>
-        request.id === requestId
-          ? {
-              ...request,
-
-              status: data.status as RequestStatus,
-
-              fulfilledAt: data.fulfilled_at ?? undefined,
-            }
-          : request,
-      ),
+    const { error } = await supabase.rpc(
+      "update_hospital_blood_request_status",
+      { p_request_id: requestId, p_status: status },
     )
+    if (error) throw error
+    await refreshHospitalRequests()
   }
 
   const updateHospitalRequestDetails = async (
     requestId: string,
 
-    values: Partial<Pick<BloodRequest, "bloodGroup" | "units" | "urgency" | "area" | "department" | "requiredBy" | "patientAge" | "notes" | "latitude" | "longitude" | "locationAddress">>,
+    values: Partial<Pick<BloodRequest, "bloodGroup" | "component" | "searchRadiusKm" | "units" | "urgency" | "area" | "department" | "requiredBy" | "patientAge" | "notes" | "latitude" | "longitude" | "locationAddress">>,
   ) => {
     if (!currentUser?.id || role !== "hospital")
       throw new Error("Sign in to a hospital account to edit a request.")
+
     if (!hospitalRecordId)
       throw new Error("Your hospital record is not linked to this account.")
 
@@ -976,6 +1159,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .update({
         ...(values.bloodGroup !== undefined && {
           blood_group: values.bloodGroup,
+        }),
+
+        ...(values.component !== undefined && {
+          component: values.component,
+        }),
+
+        ...(values.searchRadiusKm !== undefined && {
+          search_radius_km: values.searchRadiusKm,
         }),
 
         ...(values.units !== undefined && { units: values.units }),
@@ -1024,6 +1215,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ...request,
 
               bloodGroup: data.blood_group as BloodRequest["bloodGroup"],
+
+              component: data.component as BloodRequest["component"],
+
+              searchRadiusKm: data.search_radius_km ?? 25,
 
               units: data.units,
 
@@ -1093,11 +1288,134 @@ export function AppProvider({ children }: { children: ReactNode }) {
     )
   }
 
+  const updateHospitalProfile = async (profile: {
+    hospital_name: string
+    hospital_type: string
+    street_address: string
+    city: string
+    phone: string
+    email: string
+  }) => {
+    if (!currentUser?.id || role !== "hospital" || !hospitalRecordId) {
+      throw new Error("Your hospital profile is not linked to this account.")
+    }
+
+    const { data, error } = await supabase
+      .from("hospitals")
+      .update({
+        hospital_name: profile.hospital_name.trim(),
+        hospital_type: profile.hospital_type.trim() || null,
+        street_address: profile.street_address.trim() || null,
+        city: profile.city.trim() || null,
+        phone: profile.phone.trim() || null,
+        email: profile.email.trim() || null,
+      })
+      .eq("user_id", currentUser.id)
+      .select("*")
+      .single()
+
+    if (error) throw error
+
+    setRoleDetails(data as Record<string, unknown>)
+  }
+
+  const updateDonorProfile = async (profile: {
+    name: string
+    phone: string
+    bloodGroup: Donor["bloodGroup"]
+    city: string
+    area: string
+    emergencyContact: string
+    latitude: number | null
+    longitude: number | null
+    mapLocation: string
+  }) => {
+    if (!currentUser?.id || role !== "donor" || !donorRecordId) {
+      throw new Error("Your donor profile is not linked to this account.")
+    }
+
+    const { error } = await supabase.rpc("update_donor_profile", {
+      p_full_name: profile.name.trim(),
+      p_phone: profile.phone.trim() || null,
+      p_blood_group: profile.bloodGroup,
+      p_city: profile.city.trim() || null,
+      p_area: profile.area.trim() || null,
+      p_emergency_contact: profile.emergencyContact.trim() || null,
+      p_latitude: profile.latitude,
+      p_longitude: profile.longitude,
+      p_map_location: profile.mapLocation.trim() || null,
+    })
+
+    if (error) throw error
+
+    setCurrentUser((current) =>
+      current ? { ...current, name: profile.name.trim() } : current,
+    )
+    setRoleDetails((current) =>
+      current
+        ? {
+            ...current,
+            full_name: profile.name.trim(),
+            phone: profile.phone.trim() || null,
+            blood_group: profile.bloodGroup,
+            city: profile.city.trim() || null,
+            area: profile.area.trim() || null,
+            emergency_contact: profile.emergencyContact.trim() || null,
+            approximate_latitude:
+              profile.latitude === null
+                ? null
+                : Number(profile.latitude.toFixed(2)),
+            approximate_longitude:
+              profile.longitude === null
+                ? null
+                : Number(profile.longitude.toFixed(2)),
+            map_location: profile.mapLocation.trim() || null,
+          }
+        : current,
+    )
+    setDonorList((current) =>
+      current.map((donor) =>
+        donor.id === currentUser.id
+          ? {
+              ...donor,
+              name: profile.name.trim(),
+              phone: "",
+              bloodGroup: profile.bloodGroup,
+              city: profile.city.trim(),
+              area: profile.area.trim(),
+              latitude: profile.latitude ?? undefined,
+              longitude: profile.longitude ?? undefined,
+              locationAddress: profile.mapLocation,
+            }
+          : donor,
+      ),
+    )
+  }
+
   const loadProfile = async (userId: string): Promise<{
     role: Exclude<Role, null>
 
     name: string
   }> => {
+    const commitProfile = (
+      profileRole: Exclude<Role, null>,
+      name: string,
+      details: Record<string, unknown>,
+    ) => {
+      if (details.user_id !== userId || typeof details.id !== "string") {
+        throw new Error(
+          "Your organisation record is not linked to the authenticated account.",
+        )
+      }
+
+      setRoleDetails(details)
+      setCurrentUser({ id: userId, name })
+      setRoleState(profileRole)
+      void loadNotifications(userId)
+
+      return { role: profileRole, name }
+    }
+
     const { data: profile, error: profileError } = await supabase
 
       .from("profiles")
@@ -1109,26 +1427,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .maybeSingle()
 
     if (profileError) {
-      if (profileError.code === "PGRST116") {
-        const repairedProfile = await syncCurrentUserProfile(userId).catch(
-          (error) => {
-            throw new ProfileNotFoundError(
-              error instanceof Error && error.message.includes("Additional")
-                ? error.message
-                : "Your profile was not found.",
-            )
-          },
-        )
-
-        setRoleState(repairedProfile.role)
-
-        setCurrentUser({ id: userId, name: repairedProfile.name })
-
-        setRoleDetails(repairedProfile.roleDetails)
-
-        return repairedProfile
-      }
-
       console.error("PROFILE ERROR", profileError)
 
       throw profileError
@@ -1145,22 +1443,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       )
 
-      setRoleState(repairedProfile.role)
-
-      setCurrentUser({ id: userId, name: repairedProfile.name })
-
-      setRoleDetails(repairedProfile.roleDetails)
-
-      return repairedProfile
+      return commitProfile(
+        repairedProfile.role,
+        repairedProfile.name,
+        repairedProfile.roleDetails,
+      )
     }
 
     if (!profile.role || !VALID_ROLES.has(profile.role)) {
       throw new Error("Your account has an invalid role.")
     }
-
-    setRoleState(profile.role)
-
-    setCurrentUser({ id: profile.id, name: profile.full_name })
 
     const table = getRoleTable(profile.role)
 
@@ -1176,22 +1468,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (detailsError) {
       console.error("Unable to load account role record:", detailsError)
+
       throw detailsError
     }
 
     let roleDetails = details as Record<string, unknown> | null
+
     if (!roleDetails) {
       const repairedProfile = await syncCurrentUserProfile(userId)
+
       if (repairedProfile.role !== profile.role) {
         throw new Error("The role record does not match the account role.")
       }
+
       roleDetails = repairedProfile.roleDetails
     }
-    setRoleDetails(roleDetails)
 
-    void loadNotifications(userId)
+    if (!roleDetails) {
+      throw new Error(
+        "The authenticated organisation record could not be loaded.",
+      )
+    }
 
-    return { role: profile.role, name: profile.full_name }
+    return commitProfile(profile.role, profile.full_name, roleDetails)
   }
 
   const loadDonorDetails = async (userId: string, profileName: string) => {
@@ -1286,8 +1585,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       distanceKm: request.distance_km ?? undefined,
 
-      verifiedBy: request.verified_by ? "Verified NGO" : undefined,
-
       matchedDonors: [],
     }))
 
@@ -1333,6 +1630,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         body: notification.body,
 
+        requestId: notification.request_id ?? null,
+
         timestamp: notification.created_at,
 
         read: notification.read,
@@ -1344,8 +1643,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     void supabase.auth.getSession().then(async ({ data, error }) => {
-      if (error)
+      if (error) {
         console.error("Unable to restore Supabase session:", error.message)
+        if (mounted) setAuthLoading(false)
+        return
+      }
 
       if (mounted && data.session) {
         try {
@@ -1367,6 +1669,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (!session) {
+          hospitalRequestLoadVersion.current += 1
           setRoleState(null)
 
           setCurrentUser(null)
@@ -1374,6 +1677,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setRoleDetails(null)
 
           setRequestList([])
+
+          setHospitalRequestsError(null)
+
+          setHospitalRequestsLoading(false)
 
           setDonorList([])
 
@@ -1402,45 +1709,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     expectedRole: Role,
   ) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+    setAuthLoading(true)
 
-      password,
-    })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
 
-    if (error) throw error
+        password,
+      })
 
-    const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (error) throw error
 
-    if (userError) throw userError
+      const { data: userData, error: userError } = await supabase.auth.getUser()
 
-    const user = userData.user
+      if (userError) throw userError
 
-    if (!user) throw new Error("Supabase did not return an authenticated user.")
+      const user = userData.user
 
-    console.log("AUTH SUCCESS", { userId: user.id, email: user.email })
+      if (!user)
+        throw new Error("Supabase did not return an authenticated user.")
 
-    const actualProfile = await loadProfile(user.id)
-
-    const actualRole = actualProfile.role
-
-    if (expectedRole && actualRole !== expectedRole) {
-      await supabase.auth.signOut()
-
+      hospitalRequestLoadVersion.current += 1
       setRoleState(null)
-
       setCurrentUser(null)
+      setRoleDetails(null)
+      setRequestList([])
+      setHospitalRequestsLoading(true)
+      setHospitalRequestsError(null)
+      setRequestFeedError(null)
+      setNotifList([])
+      setNotificationsError(null)
 
-      throw new RoleMismatchError(
-        "The selected role does not match your account.",
-      )
+      const actualProfile = await loadProfile(user.id)
+      const actualRole = actualProfile.role
+
+      if (expectedRole && actualRole !== expectedRole) {
+        await supabase.auth.signOut()
+        setRoleState(null)
+        setCurrentUser(null)
+        setRoleDetails(null)
+
+        throw new RoleMismatchError(
+          "The selected role does not match your account.",
+        )
+      }
+
+      if (actualRole === "donor") {
+        void loadDonorDetails(user.id, actualProfile.name)
+      }
+
+      return actualRole
+    } finally {
+      setAuthLoading(false)
     }
-
-    if (actualRole === "donor") {
-      void loadDonorDetails(user.id, actualProfile.name)
-    }
-
-    return actualRole
   }
 
   const register = async (
@@ -1451,8 +1772,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectedBloodGroup: string,
 
     consent: boolean,
-
-    documents: RegistrationDocuments = {},
   ) => {
     const email = values.email?.trim()
 
@@ -1563,327 +1882,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     console.log("SELECTED ROLE:", selectedRole)
 
-    let documentPath: string | undefined
-
-    const document =
-      selectedRole === "ngo"
-        ? documents.ngo
-        : selectedRole === "hospital"
-          ? documents.hospital
-          : null
-
-    if (document && response.data.session) {
-      const bucket = "registration-certificates"
-
-      const safeName = document.name.replace(/[^a-zA-Z0-9._-]/g, "_")
-
-      documentPath = `${user.id}/registration-certificate/${safeName}`
-
-      const { error: uploadError } = await supabase.storage
-
-        .from(bucket)
-
-        .upload(documentPath, document, {
-          upsert: true,
-
-          contentType: document.type,
-        })
-
-      if (uploadError) {
-        console.error("CERTIFICATE UPLOAD ERROR", uploadError)
-
-        throw new Error(
-          "Registration failed while saving your profile. Please try again.",
-        )
-      }
-    }
-
-    try {
-      const profilePayload = {
-        id: user.id,
-
-        role: selectedRole,
-
-        full_name: appropriateName,
-
-        email,
-
-        phone: values.phone || null,
-      }
-
-      const { data: profileResult, error: profileError } = await supabase
-
-        .from("profiles")
-
-        .upsert(profilePayload, { onConflict: "id" })
-
-        .select()
-
-      console.log("PROFILE INSERT:", profileResult)
-
-      if (profileError) {
-        console.error("PROFILE INSERT ERROR:", profileError)
-
-        throw profileError
-      }
-
-      if (selectedRole === "donor") {
-        const donorCoordinates = parseCoordinates(values.mapLocation)
-
-        const donorPayload = {
-          id: user.id,
-
-          user_id: user.id,
-
-          full_name: values.fullName || appropriateName,
-
-          email,
-
-          phone: values.phone || null,
-
-          age: values.age ? Number(values.age) : null,
-
-          category: values.category || null,
-
-          gender: values.gender || null,
-
-          aadhaar: values.aadhaar || null,
-
-          blood_group: selectedBloodGroup || null,
-
-          city: values.city || null,
-
-          map_location: values.mapLocation || null,
-
-          approximate_latitude:
-            donorCoordinates.latitude == null
-              ? null
-              : Number(donorCoordinates.latitude.toFixed(2)),
-
-          approximate_longitude:
-            donorCoordinates.longitude == null
-              ? null
-              : Number(donorCoordinates.longitude.toFixed(2)),
-
-          radius: values.radius ? Number.parseInt(values.radius, 10) : null,
-
-          consent,
-
-          available: true,
-
-          registration_certificate: documentPath || null,
-        }
-
-        const { data: donorResult, error: donorError } = await supabase
-
-          .from("donors")
-
-          .upsert(donorPayload, { onConflict: "user_id" })
-
-          .select()
-
-        console.log("DONOR INSERT:", donorResult)
-
-        if (donorError) {
-          console.error("DONOR INSERT ERROR:", donorError)
-
-          throw donorError
-        }
-      }
-
-      if (selectedRole === "ngo") {
-        const organisationName = values.organisationName?.trim() ?? ""
-
-        const registrationNumber = values.registrationNumber?.trim() ?? ""
-
-        const contactPerson = values.contactPerson?.trim() ?? ""
-
-        const ngoCoordinates = parseCoordinates(values.mapLocation)
-
-        if (registrationNumber) {
-          const { data: existingNgo, error: existingNgoError } = await supabase
-
-            .from("ngos")
-
-            .select("id, user_id")
-
-            .eq("registration_number", registrationNumber)
-
-            .maybeSingle()
-
-          if (existingNgoError && existingNgoError.code !== "PGRST116") {
-            throw existingNgoError
-          }
-
-          if (existingNgo && existingNgo.user_id !== user.id) {
-            throw new Error("This registration number is already registered.")
-          }
-        }
-
-        const ngoPayload = {
-          id: user.id,
-
-          user_id: user.id,
-
-          organisation_name: organisationName,
-
-          registration_number: registrationNumber,
-
-          organisation_type: values.organisationType || null,
-
-          contact_person: contactPerson,
-
-          email,
-
-          phone: values.phone || null,
-
-          street_address: values.streetAddress || null,
-
-          city: values.city || null,
-
-          map_location: values.mapLocation || null,
-
-          latitude: ngoCoordinates.latitude ?? null,
-
-          longitude: ngoCoordinates.longitude ?? null,
-
-          areas_served: values.areasServed || null,
-
-          registration_certificate: documentPath || null,
-
-          registration_certificate_url: documentPath || null,
-        }
-
-        const { data: ngoResult, error: ngoError } = await supabase
-
-          .from("ngos")
-
-          .upsert(ngoPayload, { onConflict: "user_id" })
-
-          .select()
-
-        console.log("NGO INSERT:", ngoResult)
-
-        if (ngoError) {
-          console.error("NGO INSERT ERROR:", ngoError)
-
-          throw ngoError
-        }
-      }
-
-      if (selectedRole === "hospital") {
-        const hospitalCoordinates = parseCoordinates(values.mapLocation)
-
-        const hospitalPayload = {
-          id: user.id,
-
-          user_id: user.id,
-
-          hospital_name: values.hospitalName.trim(),
-
-          hospital_type: values.hospitalType || null,
-
-          registration_id: values.registrationId || null,
-
-          contact_person: values.contactPerson || null,
-
-          phone: values.phone || null,
-
-          email,
-
-          street_address: values.streetAddress || null,
-
-          city: values.city || null,
-
-          map_location: values.mapLocation || null,
-
-          latitude: hospitalCoordinates.latitude ?? null,
-
-          longitude: hospitalCoordinates.longitude ?? null,
-
-          location_address: values.mapLocation
-            ? values.mapLocation
-
-                .replace(
-                  /\s*\(?\s*-?\d{1,2}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?\s*\)?\s*$/,
-
-                  "",
-                )
-
-                .trim()
-            : null,
-
-          blood_bank: values.bloodBank || null,
-
-          operating_hours: values.operatingHours || null,
-
-          registration_certificate: documentPath || null,
-        }
-
-        const { data: hospitalResult, error: hospitalError } = await supabase
-
-          .from("hospitals")
-
-          .upsert(hospitalPayload, { onConflict: "user_id" })
-
-          .select()
-
-        console.log("HOSPITAL INSERT:", hospitalResult)
-
-        if (hospitalError) {
-          console.error("HOSPITAL INSERT ERROR:", hospitalError)
-
-          if (
-            hospitalError.code === "23505" &&
-            hospitalError.message.includes("registration_id")
-          ) {
-            throw new Error(
-              "This hospital registration ID is already registered.",
-            )
-          }
-
-          throw hospitalError
-        }
-      }
-    } catch (error) {
-      console.error("REGISTRATION DATABASE ERROR:", error)
-
-      throw error
-    }
-
     if (!response.data.session) {
-      return { requiresEmailConfirmation: true, documentPath }
+      return { requiresEmailConfirmation: true }
     }
 
-    const { data: registeredRoleDetails, error: registeredRoleError } =
-      await supabase
-        .from(getRoleTable(selectedRole))
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle()
-    if (registeredRoleError) {
-      console.error("Unable to load newly registered role record:", {
-        code: registeredRoleError.code,
-        message: registeredRoleError.message,
-      })
-      throw registeredRoleError
-    }
-    if (!registeredRoleDetails) {
-      throw new Error(
-        "Registration completed, but the organisation record was not created. Contact support before posting requests.",
-      )
-    }
+    const registeredProfile = await syncCurrentUserProfile(user.id)
+
+    setRoleDetails(registeredProfile.roleDetails)
+
+    setCurrentUser({ id: user.id, name: registeredProfile.name })
 
     setRoleState(selectedRole)
 
-    setCurrentUser({ id: user.id, name: appropriateName })
-    setRoleDetails(registeredRoleDetails as Record<string, unknown>)
-
-    return { requiresEmailConfirmation: false, documentPath }
+    return { requiresEmailConfirmation: false }
   }
 
   const logout = () => {
     void supabase.auth.signOut()
+
+    hospitalRequestLoadVersion.current += 1
 
     setRoleState(null)
 
@@ -1895,6 +1912,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setRequestList([])
 
+    setHospitalRequestsError(null)
+
+    setHospitalRequestsLoading(false)
+
     setDonorList([])
 
     setNotifList([])
@@ -1902,31 +1923,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRequestFeedError(null)
 
     setNotificationsError(null)
-  }
-
-  const verifyRequest = async (requestId: string) => {
-    if (role !== "ngo" || !currentUser?.id)
-      throw new Error("Sign in as an NGO to verify a request.")
-
-    const { error } = await supabase.rpc("verify_blood_request", {
-      p_request_id: requestId,
-    })
-
-    if (error) throw error
-
-    setRequestList((current) =>
-      current.map((request) =>
-        request.id === requestId
-          ? {
-              ...request,
-
-              status: "Verified",
-
-              verifiedBy: currentUser.name,
-            }
-          : request,
-      ),
-    )
   }
 
   const createRequest = (
@@ -1939,7 +1935,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       createdAt: new Date().toISOString(),
 
-      status: "Verification Pending",
+      status: "Matching",
     }
 
     setRequestList((prev) => [newReq, ...prev])
@@ -1956,69 +1952,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (role !== "ngo" || status !== "Fulfilled")
-      throw new Error("This role cannot update the request to that status.")
+    if (role === "ngo")
+      throw new Error(
+        "NGOs can update their own coordination response, but only the hospital can verify donations and fulfil a request.",
+      )
 
-    const { error } = await supabase.rpc("complete_ngo_blood_request", {
-      p_request_id: requestId,
-    })
-
-    if (error) throw error
-
-    setRequestList((current) =>
-      current.map((request) =>
-        request.id === requestId
-          ? {
-              ...request,
-
-              status: "Fulfilled",
-
-              fulfilledAt: new Date().toISOString(),
-            }
-          : request,
-      ),
-    )
+    throw new Error("This role cannot update the request status.")
   }
 
-  const toggleDonorAvailability = (donorId: string) => {
+  const toggleDonorAvailability = async (donorId: string) => {
+    if (!currentUser?.id || donorId !== currentUser.id) {
+      throw new Error("You can only update your own donor availability.")
+    }
+
     const current =
       donorAvailability ??
-      donorList.find((donor) => donor.id === donorId)?.available ??
-      false
-
+      (typeof roleDetails?.available === "boolean"
+        ? roleDetails.available
+        : false)
     const next = !current
-
-    setDonorAvailability(next)
-
-    void supabase
-
+    const { data, error } = await supabase
       .from("donors")
-
       .update({ available: next })
-
-      .eq("user_id", donorId)
-
+      .eq("user_id", currentUser.id)
       .select("id")
-
       .maybeSingle()
 
-      .then(({ error }) => {
-        if (error) console.warn("DONOR AVAILABILITY ERROR", error)
-      })
+    if (error) throw error
+    if (!data) throw new Error("Your donor availability could not be updated.")
 
-    setDonorList((prev) =>
-      prev.map((donor) =>
-        donor.id === donorId
-          ? {
-              ...donor,
-
-              available: next,
-
-              status: next ? "Active" : "Temporarily Unavailable",
-            }
-          : donor,
-      ),
-    )
+    setDonorAvailability(next)
+    if (donorRecordId) {
+      setDonorList((prev) =>
+        prev.map((donor) =>
+          donor.id === donorRecordId
+            ? {
+                ...donor,
+                available: next,
+                status: next ? "Active" : "Temporarily Unavailable",
+              }
+            : donor,
+        ),
+      )
+    }
   }
 
   const markNotificationRead = async (id: string) => {
@@ -2110,8 +2086,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         logout,
 
-        verifyRequest,
-
         createRequest,
 
         updateRequestStatus,
@@ -2127,6 +2101,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateHospitalRequestDetails,
 
         updateHospitalLocation,
+
+        updateHospitalProfile,
+
+        updateDonorProfile,
 
         toggleDonorAvailability,
 

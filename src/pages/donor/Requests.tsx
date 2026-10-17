@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { AnimatePresence, motion } from "framer-motion"
+import { Link } from "react-router-dom"
 
 import {
   ArrowRight,
@@ -9,7 +10,6 @@ import {
   Droplet,
   MapPin,
   Search,
-  ShieldCheck,
   X,
 } from "lucide-react"
 
@@ -23,15 +23,21 @@ import { useDonorPortal } from "../../context/DonorPortalContext"
 
 import type { BloodGroup, BloodRequest, Urgency } from "../../data/mockData"
 
-import { distanceByArea, urgencyLabel } from "../../data/donorDashboardData"
+import { urgencyLabel } from "../../data/donorDashboardData"
 
 const groups: BloodGroup[] = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"]
 
 const active = new Set([
+  "Verification Pending",
+
   "Verified",
+
   "Matching",
+
   "Donors Contacted",
+
   "Donor Confirmed",
+
   "Hospital Confirmation",
 ])
 
@@ -46,9 +52,11 @@ const tone = (urgency: Urgency) =>
 
 function RequestDetails({
   request,
+
   onClose,
 }: {
   request: BloodRequest
+
   onClose: () => void
 }) {
   return (
@@ -92,32 +100,49 @@ function RequestDetails({
         <div className="mt-4 space-y-3 rounded-xl bg-[#F5F8FA] p-4 text-xs">
           {[
             ["Request ID", request.id],
+
             [
               "Units",
+
               `${request.units} ${request.units === 1 ? "unit" : "units"}`,
             ],
+
+            [
+              "Component",
+
+              (request.component ?? "WHOLE_BLOOD").replace(/_/g, " "),
+            ],
+
             ["Location", request.area],
+
             [
               "Distance",
+
               request.distanceKm != null
-                ? `About ${request.distanceKm} km`
-                : distanceByArea[request.area] ?? "Nearby",
+                ? `Approx. ${request.distanceKm} km`
+                : "Same-city match; exact distance unavailable",
             ],
+
             [
               "Required by",
+
               request.requiredBy
                 ? new Date(request.requiredBy).toLocaleString("en-IN", {
                     dateStyle: "medium",
+
                     timeStyle: "short",
                   })
                 : "As soon as possible",
             ],
+
             ["Status", request.status],
-            ["Verification", request.verifiedBy ?? "Verified request"],
+
             [
               "Posted",
+
               new Date(request.createdAt).toLocaleString("en-IN", {
                 dateStyle: "medium",
+
                 timeStyle: "short",
               }),
             ],
@@ -149,11 +174,15 @@ export function DonorRequestWorkspace({
 }: {
   mode?: "emergency" | "nearby"
 }) {
-  const { requests, currentUser, donors, requestFeedError } = useApp()
+  const { requests, currentUser, donors, roleDetails, requestFeedError } =
+    useApp()
 
   const donor = donors.find((item) => item.id === currentUser?.id)
 
   const { profile, recordResponse, responses } = useDonorPortal()
+  const donorPhone =
+    profile.phone?.trim() ||
+    (typeof roleDetails?.phone === "string" ? roleDetails.phone.trim() : "")
 
   const bloodGroup = profile.bloodGroup ?? donor?.bloodGroup
 
@@ -184,7 +213,15 @@ export function DonorRequestWorkspace({
   const list = useMemo(
     () =>
       requests
+
         .filter((request) => {
+          const hasExistingResponse = responses.some(
+            (response) =>
+              response.requestId === request.id &&
+              response.status !== "Cancelled" &&
+              response.status !== "Completed",
+          )
+
           const isActive =
             (active.has(request.status) && request.status !== "Fulfilled") ||
             (mode === "nearby" &&
@@ -193,7 +230,9 @@ export function DonorRequestWorkspace({
 
           const matchesSearch =
             `${request.id} ${request.hospitalName} ${request.area} ${request.bloodGroup}`
+
               .toLowerCase()
+
               .includes(query.toLowerCase())
 
           const matchesGroup =
@@ -203,12 +242,10 @@ export function DonorRequestWorkspace({
             urgency === "All urgency" ||
             urgencyLabel[request.urgency] === urgency
 
-          const km =
-            request.distanceKm ??
-            Number.parseFloat(distanceByArea[request.area] ?? "99")
-
           const matchesDistance =
-            distance === "Any distance" || km <= Number(distance)
+            distance === "Any distance" ||
+            (request.distanceKm != null &&
+              request.distanceKm <= Number(distance))
 
           const matchesHospital =
             hospital === "All hospitals" || request.hospitalName === hospital
@@ -227,23 +264,40 @@ export function DonorRequestWorkspace({
             !declined.includes(request.id)
           )
         })
+
         .sort((a, b) => a.urgency.localeCompare(b.urgency)),
+
     [
       bloodGroup,
+
       declined,
+
       distance,
+
       group,
+
       hospital,
+
       mode,
+
       query,
+
       requests,
+
+      responses,
+
       status,
+
       urgency,
     ],
   )
 
   const respond = async () => {
     if (!confirm) return
+    if (!donorPhone) {
+      setToast("Add a phone number to your donor profile before responding.")
+      return
+    }
 
     try {
       await recordResponse(confirm.id)
@@ -253,6 +307,7 @@ export function DonorRequestWorkspace({
           ? error.message
           : "Unable to send your response.",
       )
+
       return
     }
 
@@ -268,14 +323,17 @@ export function DonorRequestWorkspace({
 
   const subtitle =
     mode === "nearby"
-      ? "Explore and search nearby verified blood requests."
-      : "Verified requests in your network, grouped by urgency."
+      ? "Explore nearby blood requests."
+      : "Matching requests in your network, grouped by urgency."
 
   return (
     <DashboardLayout>
       <PageHeader title={title} subtitle={subtitle} />
       {requestFeedError && (
-        <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+        >
           Requests could not be loaded: {requestFeedError}
         </p>
       )}
@@ -440,7 +498,7 @@ export function DonorRequestWorkspace({
             No matching requests
           </p>
           <p className="mt-1 text-xs text-[#617587]">
-            Try changing filters or search. Verified requests only.
+            Try changing your filters or search.
           </p>
         </div>
       )}
@@ -489,9 +547,25 @@ export function DonorRequestWorkspace({
                 {confirm.area}
               </p>
               <p className="mt-1 text-[#617587]">
-                Your contact details are shared only for verified coordination.
+                By responding, you agree to share your name, phone number, blood
+                group, city, and area with this requesting hospital so it can
+                coordinate with you. Your exact coordinates, emergency contact,
+                and sensitive personal records are not shared.
               </p>
             </div>
+            {!donorPhone && (
+              <p role="alert" className="mt-3 text-xs text-rose-700">
+                A valid phone number is required to respond. Add it in your{" "}
+                <Link
+                  to="/donor/profile"
+                  onClick={() => setConfirm(null)}
+                  className="font-semibold underline"
+                >
+                  donor profile
+                </Link>{" "}
+                first.
+              </p>
+            )}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setConfirm(null)}
@@ -501,7 +575,8 @@ export function DonorRequestWorkspace({
               </button>
               <button
                 onClick={respond}
-                className="rounded-lg bg-[#E51C3D] px-4 py-2 text-xs font-bold text-white"
+                disabled={!donorPhone}
+                className="rounded-lg bg-[#E51C3D] px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Confirm response
               </button>
@@ -515,15 +590,23 @@ export function DonorRequestWorkspace({
 
 function RequestCard({
   request,
+
   responded,
+
   onDetails,
+
   onRespond,
+
   onDecline,
 }: {
   request: BloodRequest
+
   responded: boolean
+
   onDetails: (request: BloodRequest) => void
+
   onRespond: (request: BloodRequest) => void
+
   onDecline: (id: string) => void
 }) {
   const { profile, updateResponse } = useDonorPortal()
@@ -542,7 +625,11 @@ function RequestCard({
             {urgencyLabel[request.urgency]}
           </span>
           <h3 className="mt-2 font-display text-base font-bold text-[#031A36]">
-            {request.bloodGroup} · {request.units} units required
+            {request.bloodGroup} ·{" "}
+            {(request.component ?? "WHOLE_BLOOD")
+              .replace(/_/g, " ")
+              .toLowerCase()}{" "}
+            · {request.units} units
           </h3>
           <p className="mt-1 text-xs text-[#617587]">
             {request.hospitalName} · {request.area}
@@ -553,24 +640,19 @@ function RequestCard({
       <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-[#617587]">
         <span className="flex items-center gap-1">
           <MapPin size={12} />
-          {distanceByArea[request.area] ?? "Nearby"}
+          {request.distanceKm != null
+            ? `Approx. ${request.distanceKm} km`
+            : "Same city; exact distance unavailable"}
         </span>
-        <span>
-          {request.area}, {profile.city ?? "Mumbai"}
-        </span>
+        <span>{request.area}</span>
         <span className="flex items-center gap-1">
           <Clock3 size={12} />
           {new Date(request.createdAt).toLocaleDateString("en-IN", {
             day: "numeric",
+
             month: "short",
           })}
         </span>
-        {request.verifiedBy && (
-          <span className="flex items-center gap-1 text-[#16A34A]">
-            <ShieldCheck size={12} />
-            Verified request
-          </span>
-        )}
       </div>
       {responded ? (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-[#ECFDF3] px-3 py-2 text-xs font-semibold text-[#16803C]">

@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "test": "node --experimental-strip-types --test tests/hospital-request-loading.test.ts tests/donor-request-distribution.test.ts tests/hospital-donor-test-fixture.test.ts tests/hospital-analytics.test.ts tests/ngo-coordination-migration.test.ts tests/blood-request-fulfillment.test.ts",
+    "seed:demo:users": "node scripts/provision-demo-users.mjs",
+    "seed:hospital-donor-test-users": "node scripts/provision-hospital-donor-test-users.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

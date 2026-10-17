@@ -589,12 +589,12 @@ export default function InteractiveNetworkMap({
 
         subtitle:
           resource.resource_type === "donor"
-            ? `Verified donor · ${(resource.blood_groups ?? []).join(", ")} · ${
+            ? `Donor · ${(resource.blood_groups ?? []).join(", ")} · ${
                 resource.available ? "Available" : "Unavailable"
               }`
             : resource.resource_type === "hospital"
               ? `Registered hospital · ${(resource.blood_groups ?? []).join(", ") || "Blood group data unavailable"}`
-              : `${resource.is_verified ? "Verified" : "Registered"} partner · ${(resource.blood_groups ?? []).join(", ") || resource.area || ""}`,
+              : `Network partner · ${(resource.blood_groups ?? []).join(", ") || resource.area || ""}`,
 
         latitude: resource.latitude,
 
@@ -927,7 +927,7 @@ export default function InteractiveNetworkMap({
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
             {[
               ["Hospitals", counts.hospitals],
-              ["Verified Donors", counts.donors],
+              ["Donors", counts.donors],
               ["Blood Banks", counts.bloodBanks],
               ["NGO Partners", counts.ngos],
               ["Critical Blood Availability", counts.criticalAvailability],

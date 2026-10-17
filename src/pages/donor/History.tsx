@@ -1,187 +1,193 @@
 import { useState } from "react"
 
-import { CalendarDays, CheckCircle2, Droplet, Heart, X } from "lucide-react"
+import { CalendarDays, Droplet } from "lucide-react"
 
 import DashboardLayout, {
   PageHeader,
 } from "../../components/layout/DashboardLayout"
 
-import { demoDonationHistory } from "../../data/donorDashboardData"
+import { supabase } from "../../lib/supabase"
 
-import { useApp } from "../../context/AppContext"
+import { useDonationHistory } from "../../hooks/useDonationHistory"
 
-import { useDonorPortal } from "../../context/DonorPortalContext"
+function formatDate(value: string | null | undefined) {
+  if (!value) return "To be confirmed"
+
+  const date = new Date(value)
+
+  return Number.isNaN(date.getTime())
+    ? "Date unavailable"
+    : date.toLocaleDateString("en-IN", {
+        day: "numeric",
+
+        month: "short",
+
+        year: "numeric",
+      })
+}
+
+function componentLabel(value: string) {
+  return value.replace(/_/g, " ").toLowerCase()
+}
 
 export default function DonorHistory() {
-  const { donors, currentUser, roleDetails } = useApp()
+  const { records, loading, error } = useDonationHistory()
 
-  const { profile } = useDonorPortal()
+  const [issueError, setIssueError] = useState<string | null>(null)
 
-  const donor = donors.find((item) => item.id === currentUser?.id)
+  const [issueNotice, setIssueNotice] = useState<string | null>(null)
 
-  const total =
-    donor?.donationsCount ??
-    Number(roleDetails?.donations_count ?? demoDonationHistory.length)
+  const [reportingId, setReportingId] = useState<string | null>(null)
 
-  const lastDonation =
-    donor?.lastDonation && donor.lastDonation !== "Not recorded"
-      ? donor.lastDonation
-      : demoDonationHistory[0]?.date
+  const reportIssue = async (donationId: string) => {
+    const details = window.prompt(
+      "Describe what is incorrect in this donation record.",
+    )
 
-  const nextEligible = lastDonation
-    ? new Date(new Date(lastDonation).getTime() + 90 * 24 * 60 * 60 * 1000)
-    : null
+    if (!details?.trim()) return
 
-  const [details, setDetails] =
-    useState<typeof demoDonationHistory[number] | null>(null)
+    setReportingId(donationId)
+    setIssueError(null)
+    setIssueNotice(null)
+    try {
+      const { error: reportError } = await supabase.rpc(
+        "report_donation_record_issue",
+        { p_donation_id: donationId, p_details: details.trim() },
+      )
+      if (reportError) {
+        setIssueError(reportError.message)
+      } else {
+        setIssueNotice("Your report was submitted for review.")
+      }
+    } catch (reportError) {
+      setIssueError(
+        reportError instanceof Error
+          ? reportError.message
+          : "Unable to submit the donation-record report.",
+      )
+    } finally {
+      setReportingId(null)
+    }
+  }
+
+  const stats: Array<{
+    label: string
+    value: string | number
+    icon: typeof Droplet
+  }> = [
+    { label: "Confirmed donations", value: records.length, icon: Droplet },
+    {
+      label: "Last donation",
+      value: records[0] ? formatDate(records[0].donated_at) : "Not recorded",
+      icon: CalendarDays,
+    },
+  ]
 
   return (
     <DashboardLayout>
       <PageHeader
         title="Donation History"
-        subtitle="A timeline of your recorded contributions."
+        subtitle="Your hospital-confirmed donation records."
       />
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ["Total donations", total, Droplet],
 
-          ["Lives supported", `${total * 3}*`, Heart],
-
-          [
-            "Last donation",
-            lastDonation
-              ? new Date(lastDonation).toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })
-              : "Not recorded",
-            CalendarDays,
-          ],
-
-          [
-            "Next eligible date",
-            nextEligible
-              ? nextEligible.toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })
-              : "To be confirmed",
-            CheckCircle2,
-          ],
-        ].map(([label, value, Icon]) => {
-          const CardIcon = Icon as typeof Droplet
-
-          return (
-            <div
-              key={String(label)}
-              className="rounded-xl border border-[#D8E3EA] bg-white p-4"
-            >
-              <CardIcon size={17} className="text-[#E51C3D]" />
-              <p className="mt-3 font-display text-lg font-bold text-[#031A36]">
-                {value}
-              </p>
-              <p className="mt-1 text-[11px] text-[#617587]">{label}</p>
-            </div>
-          )
-        })}
-      </div>
-      <p className="mb-4 rounded-lg bg-[#F5F8FA] px-3 py-2 text-[10px] text-[#617587]">
-        The sample entries below are illustrative demo data. Confirm actual
-        donation records with your donation center. *Impact is an estimate, not
-        a guaranteed patient count.
-      </p>
-      <div className="rounded-2xl border border-[#D8E3EA] bg-white p-5">
-        <div className="relative ml-2 space-y-5 border-l border-[#D8E3EA] pl-6">
-          {demoDonationHistory.map((donation) => (
-            <article
-              key={donation.date}
-              className="relative rounded-xl border border-[#D8E3EA] p-4"
-            >
-              <span className="absolute -left-[33px] top-4 flex h-4 w-4 items-center justify-center rounded-full border-4 border-white bg-[#E51C3D]" />
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold text-[#E51C3D]">
-                    {new Date(donation.date).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <h2 className="mt-1 font-display text-base font-bold text-[#031A36]">
-                    {donation.hospital}
-                  </h2>
-                  <p className="mt-1 text-xs text-[#617587]">
-                    {profile.bloodGroup ?? donation.bloodGroup} · Whole Blood ·{" "}
-                    {donation.units} unit
-                  </p>
-                </div>
-                <span className="rounded-full bg-[#ECFDF3] px-2.5 py-1 text-[10px] font-bold text-[#16803C]">
-                  Completed
-                </span>
-              </div>
-              <button
-                onClick={() => setDetails(donation)}
-                className="mt-3 rounded-lg border border-[#D8E3EA] px-3 py-2 text-xs font-semibold text-[#062847] hover:bg-[#F5F8FA]"
-              >
-                View details
-              </button>
-            </article>
-          ))}
-        </div>
-      </div>
-      {details && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-[#031A36]/45 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setDetails(null)
-          }}
+      {error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="font-display text-lg font-bold text-[#031A36]">
-                  Donation record
-                </h2>
-                <p className="mt-1 text-xs text-[#617587]">
-                  Illustrative entry — not verified by the platform.
-                </p>
-              </div>
-              <button
-                onClick={() => setDetails(null)}
-                aria-label="Close details"
-              >
-                <X size={17} />
-              </button>
-            </div>
-            <div className="mt-4 space-y-3 text-xs">
-              {[
-                [
-                  "Date",
-                  new Date(details.date).toLocaleDateString("en-IN", {
-                    dateStyle: "long",
-                  }),
-                ],
-                ["Donation center", details.hospital],
-                ["Blood group", details.bloodGroup],
-                ["Donation type", "Whole Blood"],
-                ["Units", details.units],
-                ["Status", details.status],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-[#617587]">{label}</span>
-                  <b className="text-[#021734]">{value}</b>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+          Donation history could not be loaded: {error}
+        </p>
       )}
+      {issueError && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+        >
+          Report could not be submitted: {issueError}
+        </p>
+      )}
+      {issueNotice && (
+        <p
+          role="status"
+          className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+        >
+          {issueNotice}
+        </p>
+      )}
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+        {stats.map(({ label, value, icon: Icon }) => (
+          <div
+            key={label}
+            className="rounded-xl border border-[#D8E3EA] bg-white p-4"
+          >
+            <Icon size={17} className="text-[#E51C3D]" />
+            <p className="mt-3 font-display text-lg font-bold text-[#031A36]">
+              {value}
+            </p>
+            <p className="mt-1 text-[11px] text-[#617587]">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mb-4 rounded-lg bg-[#F5F8FA] px-3 py-2 text-xs text-[#617587]">
+        This history shows donations confirmed by the hospital.
+      </p>
+
+      <div className="rounded-2xl border border-[#D8E3EA] bg-white p-5">
+        {loading ? (
+          <p className="py-8 text-center text-sm text-[#617587]">
+            Loading donation records…
+          </p>
+        ) : records.length ? (
+          <div className="relative ml-2 space-y-5 border-l border-[#D8E3EA] pl-6">
+            {records.map((record) => (
+              <article
+                key={record.donation_id}
+                className="relative rounded-xl border border-[#D8E3EA] p-4"
+              >
+                <span className="absolute -left-[33px] top-4 flex h-4 w-4 items-center justify-center rounded-full border-4 border-white bg-[#E51C3D]" />
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-[#E51C3D]">
+                      {formatDate(record.donated_at)}
+                    </p>
+                    <h2 className="mt-1 font-display text-base font-bold text-[#031A36]">
+                      {record.hospital_name}
+                    </h2>
+                    <p className="mt-1 text-xs capitalize text-[#617587]">
+                      {componentLabel(record.component)}
+                      {record.volume_ml ? ` · ${record.volume_ml} ml` : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#ECFDF3] px-2.5 py-1 text-[10px] font-bold text-[#16803C]">
+                    Hospital confirmed
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-[#617587] sm:grid-cols-2">
+                  <p>Request reference: {record.request_id}</p>
+                  {record.volume_ml && (
+                    <p>Volume recorded: {record.volume_ml} ml</p>
+                  )}
+                </div>
+                <button
+                  disabled={reportingId === record.donation_id}
+                  onClick={() => void reportIssue(record.donation_id)}
+                  className="mt-3 rounded-lg border border-[#D8E3EA] px-3 py-2 text-xs font-semibold text-[#062847] hover:bg-[#F5F8FA] disabled:opacity-50"
+                >
+                  {reportingId === record.donation_id
+                    ? "Submitting…"
+                    : "Report an incorrect record"}
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-[#617587]">
+            No hospital-confirmed donation records are available yet.
+          </p>
+        )}
+      </div>
     </DashboardLayout>
   )
 }

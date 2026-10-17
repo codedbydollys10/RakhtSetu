@@ -1,5 +1,157 @@
+alter table public.blood_requests
+  add column if not exists verified_by uuid references public.ngos(id),
+  add column if not exists matched_donor uuid
+  references public.donors(id),
+  add column if not exists hospital_contact_person text,
+  add column if not exists hospital_contact_phone text,
+  add column if not exists hospital_contact_email text;
+
+do $$
+declare
+  allowed_statuses text;
+begin
+  select string_agg(quote_literal(status), ', ' order by status)
+    into allowed_statuses
+  from (
+    select unnest(array[
+      'Created',
+      'Verification Pending',
+      'Verified',
+      'Matching',
+      'Donors Contacted',
+      'Donor Confirmed',
+      'Hospital Confirmation',
+      'Fulfilled',
+      'Cancelled'
+    ]::text[]) as status
+    union
+    select distinct status
+    from public.blood_requests
+    where status is not null
+  ) existing_and_supported_statuses;
+
+  alter table public.blood_requests
+    drop constraint if exists blood_requests_status_check;
+
+  execute format(
+    'alter table public.blood_requests
+      add constraint blood_requests_status_check check (status in (%s))',
+    allowed_statuses
+  );
+end;
+$$;
+
+alter table public.blood_requests
+  alter column status set default 'Matching';
+
+do $$
+declare
+  allowed_urgencies text;
+begin
+  select string_agg(quote_literal(urgency), ', ' order by urgency)
+    into allowed_urgencies
+  from (
+    select unnest(array['CRITICAL', 'URGENT', 'NORMAL']::text[]) as urgency
+    union
+    select distinct urgency
+    from public.blood_requests
+    where urgency is not null
+  ) existing_and_supported_urgencies;
+
+  alter table public.blood_requests
+    drop constraint if exists blood_requests_urgency_check;
+
+  execute format(
+    'alter table public.blood_requests
+      add constraint blood_requests_urgency_check check (urgency in (%s))',
+    allowed_urgencies
+  );
+end;
+$$;
+
+create or replace function public.sync_legacy_blood_request_units()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.units is null then
+      new.units := new.units_required;
+    end if;
+    new.units_required := new.units;
+  elsif new.units is distinct from old.units then
+    new.units_required := new.units;
+  elsif new.units_required is distinct from old.units_required then
+    new.units := new.units_required;
+  end if;
+
+  return new;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'blood_requests'
+      and column_name = 'units_required'
+  ) then
+    execute 'drop trigger if exists sync_legacy_blood_request_units on public.blood_requests';
+    execute 'create trigger sync_legacy_blood_request_units
+      before insert or update on public.blood_requests
+      for each row execute function public.sync_legacy_blood_request_units()';
+  else
+    execute 'drop trigger if exists sync_legacy_blood_request_units on public.blood_requests';
+  end if;
+end;
+$$;
+
+alter table public.donors
+  add column if not exists radius_km integer;
+
 alter table public.notifications
-  add column if not exists request_id uuid references public.blood_requests(id) on delete cascade;
+  add column if not exists request_id uuid references public.blood_requests(id) on delete cascade,
+  add column if not exists body text,
+  add column if not exists message text;
+
+update public.notifications
+set body = coalesce(nullif(body, ''), nullif(message, ''), title, ''),
+    message = coalesce(nullif(message, ''), nullif(body, ''), title, '');
+
+alter table public.notifications
+  alter column body set default '',
+  alter column message set default '';
+
+create or replace function public.sync_notification_body_and_message()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    if new.body is distinct from old.body
+      and new.message is not distinct from old.message then
+      new.message := new.body;
+    elsif new.message is distinct from old.message
+      and new.body is not distinct from old.body then
+      new.body := new.message;
+    end if;
+  end if;
+
+  new.body := coalesce(nullif(new.body, ''), nullif(new.message, ''), new.title, '');
+  new.message := coalesce(nullif(new.message, ''), nullif(new.body, ''), new.title, '');
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_notification_body_and_message
+  on public.notifications;
+create trigger sync_notification_body_and_message
+before insert or update of body, message on public.notifications
+for each row execute function public.sync_notification_body_and_message();
 
 create unique index if not exists notifications_request_recipient_type_uidx
   on public.notifications (user_id, request_id, type)
@@ -17,14 +169,44 @@ create index if not exists blood_request_ngos_ngo_created_idx
 
 alter table public.blood_request_ngos enable row level security;
 
+drop policy if exists "Hospitals can create requests"
+  on public.blood_requests;
+create policy "Hospitals can create requests"
+  on public.blood_requests for insert to authenticated
+  with check (
+    exists (
+      select 1 from public.hospitals h
+      where h.id = public.blood_requests.hospital_id
+        and h.user_id = auth.uid()
+    )
+  );
+
+grant select, insert on public.blood_requests to authenticated;
+
+drop policy if exists "Users can link their legacy hospital record"
+  on public.hospitals;
+create policy "Users can link their legacy hospital record"
+  on public.hospitals for update to authenticated
+  using (
+    id = auth.uid()
+    and user_id is null
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'hospital'
+    )
+  )
+  with check (id = auth.uid() and user_id = auth.uid());
+
 drop policy if exists "Verified NGOs can read their assigned requests"
   on public.blood_request_ngos;
-create policy "Verified NGOs can read their assigned requests"
+drop policy if exists "NGOs can read their assigned requests"
+  on public.blood_request_ngos;
+create policy "NGOs can read their assigned requests"
   on public.blood_request_ngos for select to authenticated
   using (
     exists (
       select 1 from public.ngos n
-      where n.id = ngo_id and n.user_id = auth.uid() and n.verified
+      where n.id = ngo_id and n.user_id = auth.uid()
     )
   );
 grant select on public.blood_request_ngos to authenticated;
@@ -52,7 +234,6 @@ create policy "Assigned NGOs can read their requests"
       join public.ngos n on n.id = a.ngo_id
       where a.request_id = public.blood_requests.id
         and n.user_id = auth.uid()
-        and n.verified
     )
   );
 
@@ -113,34 +294,19 @@ as $$
     join public.donors d on d.id = p_donor_id
     where r.id = p_request_id
       and (
-        r.status in ('Verified', 'Matching', 'Donors Contacted')
+        r.status in ('Verification Pending', 'Verified', 'Matching', 'Donors Contacted')
         or (
           r.status in ('Donor Confirmed', 'Hospital Confirmation')
           and r.matched_donor = p_donor_id
         )
       )
       and d.available
-      and d.verified
       and d.consent
-      and public.blood_groups_compatible(r.blood_group, d.blood_group)
-      and (
-        (
-          r.latitude is not null and r.longitude is not null
-          and d.approximate_latitude is not null
-          and d.approximate_longitude is not null
-          and 6371 * 2 * asin(sqrt(
-            power(sin(radians(d.approximate_latitude - r.latitude) / 2), 2)
-            + cos(radians(r.latitude)) * cos(radians(d.approximate_latitude))
-            * power(sin(radians(d.approximate_longitude - r.longitude) / 2), 2)
-          )) <= coalesce(nullif(d.radius_km, 0), nullif(d.radius, 0), 50)
-        )
-        or (
-          (r.latitude is null or r.longitude is null
-            or d.approximate_latitude is null or d.approximate_longitude is null)
-          and nullif(trim(h.city), '') is not null
-          and lower(trim(d.city)) = lower(trim(h.city))
-        )
-      )
+      and upper(trim(r.blood_group)) = upper(trim(d.blood_group))
+      and nullif(trim(h.city), '') is not null
+      and nullif(trim(d.city), '') is not null
+      and lower(regexp_replace(split_part(trim(d.city), ',', 1), '\s+(city|district)$', '', 'i'))
+        = lower(regexp_replace(split_part(trim(h.city), ',', 1), '\s+(city|district)$', '', 'i'))
   );
 $$;
 
@@ -153,88 +319,50 @@ security definer
 set search_path = public
 as $$
 declare
-  authenticated_ngo_id uuid;
+  hospital_owns_request boolean;
+  ngo_assigned_request boolean;
 begin
-  select n.id into authenticated_ngo_id
-  from public.ngos n
-  where n.user_id = auth.uid() and n.verified;
-
   if tg_op = 'INSERT' then
-    if new.status <> 'Verification Pending'
+    if new.status <> 'Matching'
       or new.verified_by is not null
       or new.matched_donor is not null then
-      raise exception 'New requests must enter the verification workflow first.';
+      raise exception 'New blood requests must start in Matching status.';
     end if;
     return new;
   end if;
 
   if new.verified_by is distinct from old.verified_by then
-    if old.status <> 'Verification Pending'
-      or new.status <> 'Verified'
-      or new.verified_by is distinct from authenticated_ngo_id
-      or not exists (
-        select 1
-        from public.ngos n
-        join public.blood_request_ngos a on a.ngo_id = n.id
-        where n.user_id = auth.uid()
-          and n.verified
-          and a.request_id = new.id
-      ) then
-      raise exception 'Only an assigned, verified NGO can verify this request.';
-    end if;
+    raise exception 'Request verification is disabled for the prototype.';
   end if;
 
   if new.status is distinct from old.status then
+    select exists (
+      select 1 from public.hospitals h
+      where h.id = old.hospital_id and h.user_id = auth.uid()
+    ) into hospital_owns_request;
+
+    select exists (
+      select 1 from public.blood_request_ngos a
+      join public.ngos n on n.id = a.ngo_id
+      where a.request_id = new.id and n.user_id = auth.uid()
+    ) into ngo_assigned_request;
+
     if old.status in ('Fulfilled', 'Cancelled') then
       raise exception 'A closed blood request cannot change status.';
-    elsif new.status = 'Verified' then
-      if old.status in ('Donor Confirmed', 'Hospital Confirmation')
-        and new.matched_donor is null
-        and new.verified_by is not distinct from old.verified_by
-        and exists (
-          select 1 from public.donor_responses dr
-          where dr.request_id = new.id
-            and dr.donor_id = old.matched_donor
-            and dr.status = 'Cancelled'
-        ) then
-        null;
-      elsif new.verified_by is distinct from authenticated_ngo_id
-        or not exists (
-          select 1
-          from public.ngos n
-          join public.blood_request_ngos a on a.ngo_id = n.id
-          where n.user_id = auth.uid()
-            and n.verified
-            and a.request_id = new.id
-        ) then
-        raise exception 'Only an assigned, verified NGO can verify this request.';
-      end if;
     elsif new.status = 'Cancelled' then
-      if not exists (
-          select 1 from public.hospitals h
-          where h.id = old.hospital_id and h.user_id = auth.uid()
-        )
+      if not hospital_owns_request
         or old.status in ('Donor Confirmed', 'Hospital Confirmation') then
         raise exception 'Only the hospital can cancel this request.';
       end if;
     elsif new.status = 'Fulfilled' then
-      if exists (
-        select 1 from public.hospitals h
-        where h.id = old.hospital_id and h.user_id = auth.uid()
-      ) then
+      if hospital_owns_request then
         if old.status not in (
-          'Donor Confirmed', 'Hospital Confirmation', 'Matching', 'Donors Contacted'
+          'Verified', 'Verification Pending', 'Donor Confirmed',
+          'Hospital Confirmation', 'Matching', 'Donors Contacted'
         ) then
           raise exception 'The hospital can fulfill only a request in coordination.';
         end if;
-      elsif not exists (
-          select 1
-          from public.blood_request_ngos a
-          join public.ngos n on n.id = a.ngo_id
-          where a.request_id = new.id
-            and n.user_id = auth.uid()
-            and n.verified
-        )
+      elsif not ngo_assigned_request
         and not exists (
           select 1 from public.donor_responses dr
           where dr.request_id = new.id
@@ -242,6 +370,21 @@ begin
             and dr.status = 'Completed'
         ) then
         raise exception 'This role cannot fulfill the request.';
+      end if;
+    elsif new.status = 'Matching'
+      and old.status in ('Donor Confirmed', 'Hospital Confirmation')
+      and new.matched_donor is null
+      and exists (
+        select 1 from public.donor_responses dr
+        where dr.request_id = new.id
+          and dr.donor_id = old.matched_donor
+          and dr.status = 'Cancelled'
+      ) then
+      null;
+    elsif new.status = 'Donors Contacted'
+      or (new.status = 'Matching' and new.matched_donor is null) then
+      if not hospital_owns_request and not ngo_assigned_request then
+        raise exception 'Only the hospital or an assigned NGO can coordinate this request.';
       end if;
     elsif new.status in ('Donor Confirmed', 'Hospital Confirmation', 'Matching') then
       if new.matched_donor is null or not exists (
@@ -272,53 +415,46 @@ create trigger guard_blood_request_workflow
 before insert or update on public.blood_requests
 for each row execute function public.guard_blood_request_workflow();
 
+do $$
+declare
+  obsolete_trigger record;
+begin
+  for obsolete_trigger in
+    select trigger_row.tgname
+    from pg_trigger trigger_row
+    join pg_proc trigger_function
+      on trigger_function.oid = trigger_row.tgfoid
+    where trigger_row.tgrelid = 'public.blood_requests'::regclass
+      and not trigger_row.tgisinternal
+      and position(
+        'New requests must enter the verification workflow first'
+        in trigger_function.prosrc
+      ) > 0
+  loop
+    execute format(
+      'drop trigger %I on public.blood_requests',
+      obsolete_trigger.tgname
+    );
+  end loop;
+end;
+$$;
+
 create or replace function public.distribute_new_blood_request()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  hospital_city text;
 begin
-  select h.city into hospital_city
-  from public.hospitals h
-  where h.id = new.hospital_id;
-
   insert into public.blood_request_ngos (request_id, ngo_id)
   select new.id, n.id
   from public.ngos n
-  where n.verified
-    and (
-      (
-        new.latitude is not null and new.longitude is not null
-        and n.latitude is not null and n.longitude is not null
-        and 6371 * 2 * asin(sqrt(
-          power(sin(radians(n.latitude - new.latitude) / 2), 2)
-          + cos(radians(new.latitude)) * cos(radians(n.latitude))
-          * power(sin(radians(n.longitude - new.longitude) / 2), 2)
-        )) <= 50
-      )
-      or (
-        nullif(trim(new.area), '') is not null
-        and nullif(trim(n.areas_served), '') is not null
-        and position(lower(trim(new.area)) in lower(n.areas_served)) > 0
-      )
-      or (
-        nullif(trim(hospital_city), '') is not null
-        and (
-          lower(trim(n.city)) = lower(trim(hospital_city))
-          or position(lower(trim(hospital_city)) in lower(coalesce(n.areas_served, ''))) > 0
-        )
-      )
-    )
   on conflict (request_id, ngo_id) do nothing;
 
   insert into public.notifications (user_id, request_id, type, title, body)
-  select n.user_id, new.id, 'request', 'Blood request needs verification',
+  select n.user_id, new.id, 'request', 'New blood request for coordination',
     'A ' || lower(new.urgency) || ' request for ' || new.units || ' unit(s) of '
-      || new.blood_group || ' needs review in '
-      || coalesce(nullif(new.area, ''), nullif(hospital_city, ''), 'your service area') || '.'
+      || new.blood_group || ' needs coordination.'
   from public.blood_request_ngos a
   join public.ngos n on n.id = a.ngo_id
   where a.request_id = new.id and n.user_id is not null
@@ -330,7 +466,7 @@ begin
     insert into public.notifications (user_id, request_id, type, title, body)
     values (
       new.hospital_id, new.id, 'system', 'No local NGO matched this request',
-      'Your request was saved, but no verified NGO matched its location or service area. Review the hospital location and NGO service coverage.'
+      'Your request was saved, but no NGO profiles are available to coordinate it yet.'
     )
     on conflict (user_id, request_id, type) where request_id is not null do nothing;
   end if;
@@ -344,70 +480,32 @@ create trigger distribute_new_blood_request
 after insert on public.blood_requests
 for each row execute function public.distribute_new_blood_request();
 
-create or replace function public.assign_pending_requests_to_verified_ngo()
+create or replace function public.assign_active_requests_to_ngo()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  if not new.verified or new.user_id is null then
-    return new;
-  end if;
-
   insert into public.blood_request_ngos (request_id, ngo_id)
   select r.id, new.id
   from public.blood_requests r
-  join public.hospitals h on h.id = r.hospital_id
-  where r.status = 'Verification Pending'
-    and (
-      (
-        r.latitude is not null and r.longitude is not null
-        and new.latitude is not null and new.longitude is not null
-        and 6371 * 2 * asin(sqrt(
-          power(sin(radians(new.latitude - r.latitude) / 2), 2)
-          + cos(radians(r.latitude)) * cos(radians(new.latitude))
-          * power(sin(radians(new.longitude - r.longitude) / 2), 2)
-        )) <= 50
-      )
-      or (
-        nullif(trim(r.area), '') is not null
-        and nullif(trim(new.areas_served), '') is not null
-        and position(lower(trim(r.area)) in lower(new.areas_served)) > 0
-      )
-      or (
-        nullif(trim(h.city), '') is not null
-        and (
-          lower(trim(new.city)) = lower(trim(h.city))
-          or position(lower(trim(h.city)) in lower(coalesce(new.areas_served, ''))) > 0
-        )
-      )
-    )
+  where r.status in (
+    'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
+    'Donor Confirmed', 'Hospital Confirmation'
+  )
   on conflict (request_id, ngo_id) do nothing;
 
   insert into public.notifications (user_id, request_id, type, title, body)
-  select new.user_id, a.request_id, 'request', 'Blood request needs verification',
-    'A blood request needs review in your service area.'
+  select new.user_id, a.request_id, 'request', 'New blood request for coordination',
+    'A blood request needs coordination.'
   from public.blood_request_ngos a
   join public.blood_requests r on r.id = a.request_id
-  where a.ngo_id = new.id and r.status = 'Verification Pending'
+  where a.ngo_id = new.id and r.status in (
+    'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
+    'Donor Confirmed', 'Hospital Confirmation'
+  )
   on conflict (user_id, request_id, type) where request_id is not null do nothing;
-
-  update public.notifications
-  set read = true
-  where user_id in (
-      select h.id
-      from public.hospitals h
-      join public.blood_requests r on r.hospital_id = h.id
-      join public.blood_request_ngos a on a.request_id = r.id
-      where a.ngo_id = new.id and r.status = 'Verification Pending'
-    )
-    and request_id in (
-      select a.request_id from public.blood_request_ngos a
-      where a.ngo_id = new.id
-    )
-    and type = 'system'
-    and title = 'No local NGO matched this request';
 
   return new;
 end;
@@ -415,12 +513,38 @@ $$;
 
 drop trigger if exists assign_pending_requests_to_verified_ngo
   on public.ngos;
-create trigger assign_pending_requests_to_verified_ngo
-after insert or update of verified, areas_served, city, latitude, longitude
+drop trigger if exists assign_active_requests_to_ngo
+  on public.ngos;
+create trigger assign_active_requests_to_ngo
+after insert or update of user_id, areas_served, city, latitude, longitude
 on public.ngos
-for each row execute function public.assign_pending_requests_to_verified_ngo();
+for each row execute function public.assign_active_requests_to_ngo();
 
-create or replace function public.notify_eligible_donors_on_verification()
+insert into public.blood_request_ngos (request_id, ngo_id)
+select request.id, ngo.id
+from public.blood_requests request
+cross join public.ngos ngo
+where request.status in (
+  'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
+  'Donor Confirmed', 'Hospital Confirmation'
+)
+on conflict (request_id, ngo_id) do nothing;
+
+insert into public.notifications (user_id, request_id, type, title, body)
+select ngo.user_id, assignment.request_id, 'request',
+  'New blood request for coordination',
+  'A blood request needs coordination.'
+from public.blood_request_ngos assignment
+join public.ngos ngo on ngo.id = assignment.ngo_id
+join public.blood_requests request on request.id = assignment.request_id
+where request.status in (
+  'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
+  'Donor Confirmed', 'Hospital Confirmation'
+)
+  and ngo.user_id is not null
+on conflict (user_id, request_id, type) where request_id is not null do nothing;
+
+create or replace function public.notify_eligible_donors_on_request()
 returns trigger
 language plpgsql
 security definer
@@ -429,8 +553,10 @@ as $$
 declare
   hospital_city text;
 begin
-  if new.status = 'Verified' then
-    if tg_op = 'UPDATE' and old.status = 'Verified' then
+  if new.status in (
+    'Verification Pending', 'Verified', 'Matching', 'Donors Contacted'
+  ) then
+    if tg_op = 'UPDATE' and old.status in ('Matching', 'Donors Contacted') then
       return new;
     end if;
     select h.city into hospital_city
@@ -439,7 +565,7 @@ begin
 
     insert into public.notifications (user_id, request_id, type, title, body)
     select d.user_id, new.id, 'request', 'A blood request matches you',
-      'A verified ' || lower(new.urgency) || ' request needs ' || new.units
+      'A ' || lower(new.urgency) || ' request needs ' || new.units
         || ' unit(s) of ' || new.blood_group || ' in '
         || coalesce(nullif(hospital_city, ''), 'your area')
         || case when new.required_by is null then '.' else
@@ -455,9 +581,11 @@ $$;
 
 drop trigger if exists notify_eligible_donors_on_verification
   on public.blood_requests;
-create trigger notify_eligible_donors_on_verification
+drop trigger if exists distribute_eligible_donors_on_request
+  on public.blood_requests;
+create trigger distribute_eligible_donors_on_request
 after insert or update of status on public.blood_requests
-for each row execute function public.notify_eligible_donors_on_verification();
+for each row execute function public.notify_eligible_donors_on_request();
 
 create or replace function public.notify_newly_eligible_donor()
 returns trigger
@@ -466,13 +594,13 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.user_id is null or not new.available or not new.verified or not new.consent then
+  if new.user_id is null or not new.available or not new.consent then
     return new;
   end if;
 
   insert into public.notifications (user_id, request_id, type, title, body)
   select new.user_id, r.id, 'request', 'A blood request matches you',
-    'A verified ' || lower(r.urgency) || ' request needs ' || r.units
+    'A ' || lower(r.urgency) || ' request needs ' || r.units
       || ' unit(s) of ' || r.blood_group || ' in '
       || coalesce(nullif(h.city, ''), 'your area')
       || case when r.required_by is null then '.' else
@@ -480,9 +608,9 @@ begin
   from public.blood_requests r
   join public.hospitals h on h.id = r.hospital_id
   where r.status in (
-      'Verified', 'Matching', 'Donors Contacted',
-      'Donor Confirmed', 'Hospital Confirmation'
-    )
+    'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
+    'Donor Confirmed', 'Hospital Confirmation'
+  )
     and public.is_eligible_blood_request(r.id, new.id)
   on conflict (user_id, request_id, type) where request_id is not null do nothing;
 
@@ -492,50 +620,24 @@ $$;
 
 drop trigger if exists notify_newly_eligible_donor on public.donors;
 create trigger notify_newly_eligible_donor
-after insert or update of blood_group, available, verified, consent,
+after insert or update of user_id, blood_group, available, consent,
   approximate_latitude, approximate_longitude, city, radius, radius_km
 on public.donors
 for each row execute function public.notify_newly_eligible_donor();
 
-create or replace function public.notify_hospital_of_request_verification()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if new.status = 'Verified' then
-    if tg_op = 'UPDATE' and old.status = 'Verified' then
-      return new;
-    end if;
-    if coalesce((
-        select p.request_verification
-        from public.hospital_notification_preferences p
-        where p.hospital_id = new.hospital_id
-      ), true) then
-      insert into public.notifications (user_id, request_id, type, title, body)
-      values (
-        new.hospital_id, new.id, 'verified', 'Blood request verified',
-        'Your request ' || new.id::text || ' has been verified for donor outreach.'
-      )
-      on conflict (user_id, request_id, type) where request_id is not null do nothing;
-    end if;
-  end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists notify_hospital_of_request_verification
   on public.blood_requests;
-create trigger notify_hospital_of_request_verification
-after insert or update of status on public.blood_requests
-for each row execute function public.notify_hospital_of_request_verification();
+drop function if exists public.notify_hospital_of_request_verification();
 
-create or replace function public.get_ngo_blood_requests()
+drop function if exists public.get_ngo_blood_requests();
+create function public.get_ngo_blood_requests()
 returns table (
   id uuid,
   hospital_id uuid,
   hospital_name text,
+  hospital_contact_person text,
+  hospital_contact_phone text,
+  hospital_contact_email text,
   blood_group text,
   units integer,
   urgency text,
@@ -558,16 +660,21 @@ stable
 security definer
 set search_path = public
 as $$
+declare
+  request_ngo_id uuid;
 begin
-  if not exists (
-    select 1 from public.ngos n
-    where n.user_id = auth.uid() and n.verified
-  ) then
-    raise exception 'Only verified NGOs can review blood requests.';
+  select n.id into request_ngo_id
+  from public.ngos n
+  where n.user_id = auth.uid();
+
+  if request_ngo_id is null then
+    raise exception 'A linked NGO profile is required to load assigned requests.';
   end if;
 
   return query
-    select r.id, r.hospital_id, h.hospital_name, r.blood_group, r.units,
+    select r.id, r.hospital_id, h.hospital_name,
+      r.hospital_contact_person, r.hospital_contact_phone,
+      r.hospital_contact_email, r.blood_group, r.units,
       r.urgency, r.status, r.area, r.department, r.required_by, r.latitude,
       r.longitude, r.location_address, r.patient_age, r.notes, r.verified_by,
       r.matched_donor, r.fulfilled_at, r.created_at
@@ -575,55 +682,12 @@ begin
     join public.hospitals h on h.id = r.hospital_id
     join public.blood_request_ngos a on a.request_id = r.id
     join public.ngos n on n.id = a.ngo_id
-    where n.user_id = auth.uid()
+    where n.id = request_ngo_id and n.user_id = auth.uid()
     order by r.created_at desc;
 end;
 $$;
 
-create or replace function public.verify_blood_request(p_request_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  request_status text;
-  request_verifier uuid;
-  request_ngo_id uuid;
-begin
-  select n.id into request_ngo_id
-  from public.ngos n
-  where n.user_id = auth.uid() and n.verified;
-
-  if request_ngo_id is null then
-    raise exception 'Only verified NGOs can verify blood requests.';
-  end if;
-
-  select r.status, r.verified_by
-  into request_status, request_verifier
-  from public.blood_requests r
-  join public.blood_request_ngos a on a.request_id = r.id
-  where r.id = p_request_id and a.ngo_id = request_ngo_id
-  for update of r;
-
-  if not found then
-    raise exception 'This request is not assigned to your NGO.';
-  end if;
-  if request_status = 'Verified' then
-    if request_verifier = request_ngo_id then
-      return;
-    end if;
-    raise exception 'This request has already been verified by another NGO.';
-  end if;
-  if request_status <> 'Verification Pending' then
-    raise exception 'This request is no longer awaiting verification.';
-  end if;
-
-  update public.blood_requests
-  set status = 'Verified', verified_by = request_ngo_id
-  where id = p_request_id;
-end;
-$$;
+drop function if exists public.verify_blood_request(uuid);
 
 create or replace function public.complete_ngo_blood_request(p_request_id uuid)
 returns void
@@ -638,16 +702,15 @@ begin
     join public.ngos n on n.id = a.ngo_id
     where a.request_id = p_request_id
       and n.user_id = auth.uid()
-      and n.verified
   ) then
-    raise exception 'This request is not assigned to your verified NGO.';
+    raise exception 'This request is not assigned to your NGO.';
   end if;
 
   update public.blood_requests
   set status = 'Fulfilled', fulfilled_at = now()
   where id = p_request_id
     and status in (
-      'Verified', 'Matching', 'Donors Contacted',
+      'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
       'Donor Confirmed', 'Hospital Confirmation'
     );
   if not found then
@@ -732,12 +795,12 @@ begin
     join public.ngos n on n.id = a.ngo_id
     join public.blood_requests r on r.id = a.request_id
     where a.request_id = p_request_id and n.user_id = auth.uid()
-      and n.verified and r.status in (
-        'Verified', 'Matching', 'Donors Contacted',
+      and r.status in (
+        'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
         'Donor Confirmed', 'Hospital Confirmation'
       )
   ) then
-    raise exception 'A verified request assigned to your NGO is required.';
+    raise exception 'An active request assigned to your NGO is required.';
   end if;
 
   return query
@@ -768,9 +831,9 @@ declare
 begin
   select d.id into v_donor_id
   from public.donors d
-  where d.user_id = auth.uid() and d.verified and d.available and d.consent;
+  where d.user_id = auth.uid() and d.available and d.consent;
   if v_donor_id is null then
-    raise exception 'An approved, available donor profile with outreach consent is required.';
+    raise exception 'An available donor profile with outreach consent is required.';
   end if;
 
   select r.status into v_request_status
@@ -788,7 +851,9 @@ begin
     return v_existing_status;
   end if;
 
-  if v_request_status not in ('Verified', 'Matching', 'Donors Contacted') then
+  if v_request_status not in (
+    'Verification Pending', 'Verified', 'Matching', 'Donors Contacted'
+  ) then
     raise exception 'This request is no longer accepting responses.';
   end if;
   if not public.is_eligible_blood_request(p_request_id, v_donor_id) then
@@ -868,7 +933,7 @@ begin
           end,
           status = case
             when r.matched_donor = old.donor_id and next_donor_id is null
-              then 'Verified'
+              then 'Matching'
             when r.matched_donor = old.donor_id
               then 'Donor Confirmed'
             else r.status
@@ -966,14 +1031,79 @@ create policy "Donors can update their own responses"
 
 revoke all on function public.get_ngo_blood_requests() from public;
 revoke all on function public.guard_blood_request_workflow() from public;
-revoke all on function public.verify_blood_request(uuid) from public;
 revoke all on function public.complete_ngo_blood_request(uuid) from public;
 revoke all on function public.get_eligible_blood_requests() from public;
 revoke all on function public.get_ngo_donor_matches(uuid) from public;
 revoke all on function public.respond_to_blood_request(uuid) from public;
 grant execute on function public.get_ngo_blood_requests() to authenticated;
-grant execute on function public.verify_blood_request(uuid) to authenticated;
 grant execute on function public.complete_ngo_blood_request(uuid) to authenticated;
 grant execute on function public.get_eligible_blood_requests() to authenticated;
 grant execute on function public.get_ngo_donor_matches(uuid) to authenticated;
 grant execute on function public.respond_to_blood_request(uuid) to authenticated;
+
+notify pgrst, 'reload schema';
+
+select
+  conname,
+  pg_get_constraintdef(oid) as definition
+from pg_constraint
+where conrelid = 'public.blood_requests'::regclass
+  and conname = 'blood_requests_status_check';
+
+select
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'blood_requests'
+      and column_name = 'units_required'
+  ) as has_legacy_units_required,
+  exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.blood_requests'::regclass
+      and tgname = 'sync_legacy_blood_request_units'
+      and not tgisinternal
+  ) as legacy_units_sync_trigger_installed,
+  exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.blood_requests'::regclass
+      and tgname = 'distribute_new_blood_request'
+      and not tgisinternal
+  ) as ngo_distribution_trigger_installed,
+  exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.blood_requests'::regclass
+      and tgname = 'guard_blood_request_workflow'
+      and not tgisinternal
+  ) as active_request_workflow_trigger_installed,
+  exists (
+    select 1
+    from pg_trigger trigger_row
+    join pg_proc trigger_function
+      on trigger_function.oid = trigger_row.tgfoid
+    where trigger_row.tgrelid = 'public.blood_requests'::regclass
+      and not trigger_row.tgisinternal
+      and position(
+        'New requests must enter the verification workflow first'
+        in trigger_function.prosrc
+      ) > 0
+  ) as obsolete_request_verification_trigger_installed,
+  exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.blood_requests'::regclass
+      and tgname = 'distribute_eligible_donors_on_request'
+      and not tgisinternal
+  ) as eligible_donor_distribution_trigger_installed;
+
+select
+  request.id as request_id,
+  (select count(*) from public.ngos) as total_ngo_profiles,
+  count(distinct assignment.ngo_id) as assigned_ngo_profiles
+from public.blood_requests request
+left join public.blood_request_ngos assignment
+  on assignment.request_id = request.id
+where request.status in (
+  'Verification Pending', 'Verified', 'Matching', 'Donors Contacted',
+  'Donor Confirmed', 'Hospital Confirmation'
+)
+group by request.id
+order by request.created_at desc;

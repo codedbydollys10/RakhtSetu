@@ -24,11 +24,11 @@ import {
   Zap,
   UserCheck,
   Megaphone,
-  FileCheck,
   Menu,
   X,
   MapPin,
   Award,
+  HandHeart,
 } from "lucide-react"
 
 import { useApp } from "../../context/AppContext"
@@ -46,8 +46,6 @@ const hospitalNav = [
 
   { icon: ClipboardList, label: "My Requests", to: "/hospital/requests" },
 
-  { icon: Users, label: "Patient Records", to: "/hospital/patients" },
-
   { icon: BarChart3, label: "Reports", to: "/hospital/reports" },
 
   { icon: Settings, label: "Settings", to: "/hospital/settings" },
@@ -58,9 +56,9 @@ const ngoNav = [
 
   { icon: Users, label: "Donors", to: "/ngo/donors" },
 
-  { icon: Droplets, label: "Requests", to: "/ngo/requests" },
+  { icon: Droplets, label: "Incoming Requests", to: "/ngo/requests" },
 
-  { icon: FileCheck, label: "Verification", to: "/ngo/verification" },
+  { icon: HandHeart, label: "My Contributions", to: "/ngo/contributions" },
 
   { icon: Zap, label: "Matching", to: "/ngo/matching" },
 
@@ -229,7 +227,7 @@ export default function Sidebar() {
             {isDonorAvailable ? "You’re ready" : "Availability paused"}
           </p>
           <p className="mt-1.5 text-[10px] leading-relaxed text-(--text-secondary)">
-            Your availability is visible to verified requests.
+            Your availability is visible to matching requests.
           </p>
           <Link
             to="/donor/availability"

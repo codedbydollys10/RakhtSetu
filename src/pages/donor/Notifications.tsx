@@ -81,7 +81,7 @@ export default function DonorNotifications() {
     <DashboardLayout>
       <PageHeader
         title="Notifications"
-        subtitle="Updates about verified requests, responses and your account."
+        subtitle="Updates about requests, responses and your account."
         actions={
           <Button
             variant="outline"

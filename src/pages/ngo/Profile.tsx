@@ -1,6 +1,5 @@
 import React from "react";
 import DashboardLayout, { PageHeader } from "../../components/layout/DashboardLayout";
-import { VerificationBadge } from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { Users } from "lucide-react";
 
@@ -17,10 +16,6 @@ export default function NGOProfile() {
             <div>
               <h2 className="text-xl font-display font-bold text-[#021734]">UPAY Community Network</h2>
               <p className="text-sm text-[#021734]/50">Andheri, Mumbai</p>
-              <div className="mt-1.5 flex gap-2 flex-wrap">
-                <VerificationBadge type="NGO" />
-                <VerificationBadge type="Network Partner" />
-              </div>
             </div>
           </div>
           <div className="space-y-3 text-sm">

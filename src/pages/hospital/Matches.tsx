@@ -66,7 +66,7 @@ export default function HospitalMatches() {
           <div className="bg-white rounded-xl border border-[#C0D2DE]/60 p-10 text-center">
             <Zap size={28} className="text-[#C0D2DE] mx-auto mb-3" />
             <p className="text-sm text-[#021734]/50">No donor matches yet</p>
-            <p className="text-xs text-[#021734]/30 mt-1">Matches appear once requests are verified.</p>
+            <p className="text-xs text-[#021734]/30 mt-1">Matches appear automatically for active requests.</p>
           </div>
         )}
       </div>

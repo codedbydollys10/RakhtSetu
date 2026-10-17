@@ -15,10 +15,6 @@ import {
   MapPin,
   X,
   UserRound,
-  FileText,
-  Upload,
-  ExternalLink,
-  Trash2,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import ThemeToggle from "../components/ui/ThemeToggle"
@@ -31,7 +27,6 @@ import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 
 import { useApp } from "../context/AppContext"
-import { supabase } from "../lib/supabase"
 
 type Role = "hospital" | "ngo" | "donor"
 
@@ -120,114 +115,6 @@ const roleMedia: Record<Role, { title: string; description: string; assets: { pa
 }
 
 const bloodGroups = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
-
-const maxDocumentSize = 10 * 1024 * 1024
-const acceptedDocumentTypes = ["application/pdf", "image/jpeg", "image/png"]
-
-function RegistrationCertificateUpload({
-  bucket = "registration-certificates",
-  value,
-  onChange,
-  uploading = false,
-}: {
-  bucket?: "registration-certificates"
-  value: { file: File | null; path: string; name: string }
-  onChange: (value: { file: File | null; path: string; name: string }) => void
-  uploading?: boolean
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
-  const [error, setError] = useState("")
-  const [viewing, setViewing] = useState(false)
-
-  const selectFile = (file: File | undefined) => {
-    if (!file) return
-    setError("")
-    if (!acceptedDocumentTypes.includes(file.type)) {
-      setError("Please choose a PDF, JPG, JPEG, or PNG file.")
-      return
-    }
-    if (file.size > maxDocumentSize) {
-      setError("This file is larger than the 10 MB limit.")
-      return
-    }
-    onChange({ file, path: "", name: file.name })
-  }
-
-  const viewFile = async () => {
-    if (!value.path) return
-    setViewing(true)
-    const { data, error: signedUrlError } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(value.path, 60 * 10)
-    setViewing(false)
-    if (signedUrlError) {
-      setError(signedUrlError.message)
-      return
-    }
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer")
-  }
-
-  return (
-    <div className="sm:col-span-2">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
-        className="hidden"
-        onChange={(event) => selectFile(event.target.files?.[0])}
-      />
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") inputRef.current?.click()
-        }}
-        onDragOver={(event) => {
-          event.preventDefault()
-          setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragging(false)
-          selectFile(event.dataTransfer.files[0])
-        }}
-        className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition ${dragging ? "border-[#036D7D] bg-[#EFF7FA]" : "border-border hover:border-[#036D7D] hover:bg-[#F8FCFD]"}`}
-      >
-        <FileText className="mx-auto mb-2 text-[#036D7D]" size={24} />
-        {value.name ? (
-          <>
-            <p className="truncate text-sm font-semibold text-[#021734]">{value.name}</p>
-            <p className="mt-1 text-xs text-emerald-600">{uploading ? "Uploading securely..." : value.path ? "Uploaded successfully" : "Ready to upload when registration is completed"}</p>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-[#4B6070]">Click to upload or drag and drop</p>
-            <p className="mt-1 text-xs text-[#7A9DAA]">PDF, JPG, PNG up to 10MB</p>
-          </>
-        )}
-      </div>
-      {value.name && (
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-          {value.path && (
-            <button type="button" onClick={(event) => { event.stopPropagation(); void viewFile() }} disabled={viewing} className="inline-flex items-center gap-1.5 rounded-lg bg-[#036D7D] px-3 py-2 text-xs font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
-              <ExternalLink size={13} /> {viewing ? "Opening..." : "View"}
-            </button>
-          )}
-          <button type="button" onClick={(event) => { event.stopPropagation(); inputRef.current?.click() }} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-[#021734] hover:border-[#036D7D]">
-            <Upload size={13} /> Replace
-          </button>
-          <button type="button" onClick={(event) => { event.stopPropagation(); if (inputRef.current) inputRef.current.value = ""; onChange({ file: null, path: "", name: "" }) }} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50">
-            <Trash2 size={13} /> Remove
-          </button>
-        </div>
-      )}
-      {error && <p role="alert" className="mt-2 text-center text-xs text-red-600">{error}</p>}
-    </div>
-  )
-}
 
 function Field({
   label,
@@ -459,10 +346,6 @@ export default function Register() {
   const [errorMessage, setErrorMessage] = useState("")
   const [confirmationMessage, setConfirmationMessage] = useState("")
   const [registrationComplete, setRegistrationComplete] = useState(false)
-  const [registrationDocuments, setRegistrationDocuments] = useState({
-    ngo: { file: null as File | null, path: "", name: "" },
-    hospital: { file: null as File | null, path: "", name: "" },
-  })
   const submissionStarted = useRef(false)
 
   const activeMedia = roleMedia[role || "hospital"]
@@ -470,13 +353,13 @@ export default function Register() {
   const update = (key: string, value: string) =>
     setForm((current) => ({ ...current, [key]: value }))
 
-  const totalSteps = role === "hospital" ? 5 : role === "ngo" ? 3 : 4
+  const totalSteps = role === "hospital" ? 3 : role === "ngo" ? 2 : 3
 
   const stepTitles =
     role === "hospital"
-      ? ["Hospital Information", "Location", "Verification", "Review"]
+      ? ["Hospital Information", "Location & Operations", "Review"]
       : role === "ngo"
-        ? ["Organisation Details", "Location & Documents"]
+        ? ["Organisation Details", "Location & Service Area"]
         : [
             "Personal Details",
             "Blood & Location",
@@ -490,25 +373,7 @@ export default function Register() {
     setErrorMessage("")
     setConfirmationMessage("")
     try {
-      if (role === "ngo" && !registrationDocuments.ngo.file) {
-        throw new Error("Please upload the NGO registration certificate before completing registration.")
-      }
-      if (role === "hospital" && !registrationDocuments.hospital.file) {
-        throw new Error("Please upload the hospital registration certificate before completing registration.")
-      }
-      const result = await register(role, form, bloodGroup, consent, {
-        ngo: registrationDocuments.ngo.file,
-        hospital: registrationDocuments.hospital.file,
-      })
-      if (result.documentPath) {
-        const key = role === "ngo" ? "ngo" : role === "hospital" ? "hospital" : null
-        if (key) {
-          setRegistrationDocuments((current) => ({
-            ...current,
-            [key]: { ...current[key], path: result.documentPath ?? "" },
-          }))
-        }
-      }
+      const result = await register(role, form, bloodGroup, consent)
       setRegistrationComplete(true)
       if (result.requiresEmailConfirmation) {
         setConfirmationMessage("Registration succeeded. Check your email to confirm your account, then sign in.")
@@ -545,18 +410,6 @@ export default function Register() {
               address={form.mapLocation || ""}
               onAddressChange={(value) => update("mapLocation", value)}
             />
-          </div>
-        )
-
-      if (step === 3)
-        return (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <RegistrationCertificateUpload
-              bucket="registration-certificates"
-              value={registrationDocuments.hospital}
-              uploading={submitting}
-              onChange={(value) => setRegistrationDocuments((current) => ({ ...current, hospital: value }))}
-            />
             <SelectField
               label="Blood Bank Availability"
               value={form.bloodBank || ""}
@@ -576,7 +429,7 @@ export default function Register() {
           </div>
         )
 
-      if (step === 4)
+      if (step === 3)
         return (
           <Review
             role="Hospital"
@@ -678,12 +531,6 @@ export default function Register() {
               value={form.areasServed || ""}
               onChange={(value) => update("areasServed", value)}
               placeholder="Andheri, Bandra, Juhu"
-            />
-            <RegistrationCertificateUpload
-              bucket="registration-certificates"
-              value={registrationDocuments.ngo}
-              uploading={submitting}
-              onChange={(value) => setRegistrationDocuments((current) => ({ ...current, ngo: value }))}
             />
           </div>
         )
@@ -1018,13 +865,13 @@ export default function Register() {
                   type="button"
                   disabled={submitting || registrationComplete || (role === "donor" && step === 3 && !consent)}
                   onClick={() =>
-                    step < totalSteps - 1
+                    step < totalSteps
                       ? setStep((current) => current + 1)
                       : finish()
                   }
                   className="auth-primary-action mt-6 flex w-full items-center justify-center rounded-xl bg-[#031A36] py-3.5 font-display text-sm font-bold text-white shadow-[0_4px_0_#001126,0_7px_13px_rgba(3,26,54,0.18)] transition hover:bg-ink-blue disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {submitting ? "Creating account..." : step < totalSteps - 1 ? "Continue" : "Complete Registration"}
+                  {submitting ? "Creating account..." : step < totalSteps ? "Continue" : "Complete Registration"}
                 </button>
               </>
             )}
@@ -1053,8 +900,8 @@ function Review({ role, values }: { role: string; values: string[][] }) {
           </span>
         </div>
       ))}
-      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-        Your registration will be reviewed after submission.
+      <p className="rounded-xl border border-[#C0D2DE] bg-white p-3 text-xs text-[#4B6070]">
+        Prototype account: no organization verification or document upload is required.
       </p>
     </div>
   )

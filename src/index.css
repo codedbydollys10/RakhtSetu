@@ -59,7 +59,6 @@
   --marker-partner: #187A76;
   --marker-info: #1D5FA7;
   --hospital-overlay: rgba(244, 247, 249, 0.90);
-  --dashboard-image-overlay: rgba(244, 247, 249, 0.68);
   --hero-grid: rgba(108, 199, 211, 0.08);
   --hero-start: #351B27;
   --hero-mid: #742139;
@@ -98,7 +97,6 @@
   --marker-partner: #176F6B;
   --marker-info: #1D5FA7;
   --hospital-overlay: rgba(8, 15, 21, 0.90);
-  --dashboard-image-overlay: rgba(8, 15, 21, 0.58);
   --hero-grid: rgba(53, 197, 192, 0.08);
   --hero-start: #080F15;
   --hero-mid: #0B141C;
@@ -177,6 +175,129 @@ textarea::placeholder {
 
 .dashboard-shell {
   background-color: var(--page-bg);
+}
+
+.dashboard-shell[data-portal="hospital"] {
+  color-scheme: dark;
+  --page-bg: #0b141b;
+  --sidebar-bg: #0c161e;
+  --surface: #111d25;
+  --surface-elevated: #172630;
+  --surface-hover: #1c303a;
+  --text-primary: #edf5f5;
+  --text-secondary: #a5b7bd;
+  --text-muted: #71868e;
+  --border: #273b43;
+  --divider: #20343c;
+  --brand: #e05b70;
+  --brand-hover: #f07788;
+  --rose-soft: #39212a;
+  --rose-icon: #f08c9c;
+  --teal: #48c8b9;
+  --teal-soft: #153a3b;
+  --success: #48c8b9;
+  --warning: #e6b65e;
+  --warning-text: #e6b65e;
+  --warning-soft: #382d1b;
+  --error: #f07883;
+  --error-soft: #351d25;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="bg-white"],
+.dashboard-shell[data-portal="hospital"] [class*="bg-[#FFFFFF]"] {
+  background-color: var(--surface) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="bg-slate-50"],
+.dashboard-shell[data-portal="hospital"] [class*="bg-slate-100"],
+.dashboard-shell[data-portal="hospital"] [class*="bg-gray-50"],
+.dashboard-shell[data-portal="hospital"] [class*="bg-gray-100"] {
+  background-color: var(--surface-elevated) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="text-slate-"],
+.dashboard-shell[data-portal="hospital"] [class*="text-gray-"] {
+  color: var(--text-secondary) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="border-slate-"],
+.dashboard-shell[data-portal="hospital"] [class*="border-gray-"],
+.dashboard-shell[data-portal="hospital"] [class*="border-[#E2E8F0]"] {
+  border-color: var(--border) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="text-[#102A43]"],
+.dashboard-shell[data-portal="hospital"] [class*="text-[#101A36]"],
+.dashboard-shell[data-portal="hospital"] [class*="text-slate-800"],
+.dashboard-shell[data-portal="hospital"] [class*="text-slate-700"] {
+  color: var(--text-primary) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="text-[#64748B]"],
+.dashboard-shell[data-portal="hospital"] [class*="text-[#475569]"] {
+  color: var(--text-secondary) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="bg-rose-50"] {
+  background-color: var(--rose-soft) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="bg-green-50"] {
+  background-color: var(--teal-soft) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="bg-purple-50"] {
+  background-color: #2c2740 !important;
+}
+
+.dashboard-shell[data-portal="hospital"] [class*="border-white"] {
+  border-color: var(--border) !important;
+}
+
+.dashboard-shell[data-portal="hospital"] input,
+.dashboard-shell[data-portal="hospital"] select,
+.dashboard-shell[data-portal="hospital"] textarea {
+  color: var(--text-primary);
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+
+@media print {
+  .dashboard-shell[data-portal="hospital"] {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    background: #fff;
+    color: #111;
+  }
+
+  .dashboard-shell[data-portal="hospital"] > div,
+  .dashboard-shell[data-portal="hospital"] .no-print,
+  .dashboard-shell[data-portal="hospital"] .vascular-background {
+    display: none !important;
+  }
+
+  .dashboard-shell[data-portal="hospital"] > main {
+    height: auto;
+    overflow: visible;
+  }
+
+  .dashboard-shell[data-portal="hospital"] .dashboard-main-content {
+    padding: 0;
+  }
+
+  .dashboard-shell[data-portal="hospital"] article,
+  .dashboard-shell[data-portal="hospital"] section {
+    break-inside: avoid;
+    border-color: #d1d5db !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
+  }
+
+  .dashboard-shell[data-portal="hospital"] [class*="text-"] {
+    color: #111 !important;
+  }
 }
 
 .dashboard-main {

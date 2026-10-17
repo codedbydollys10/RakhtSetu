@@ -1,44 +1,67 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
+
 import { motion } from "framer-motion"
+
 import {
   Users,
-  FileCheck,
   Zap,
   BarChart3,
   ArrowRight,
-  CheckCircle,
   Droplets,
   HeartHandshake,
 } from "lucide-react"
+
 import DashboardLayout from "../../components/layout/DashboardLayout"
+
 import { UrgencyBadge } from "../../components/ui/Badge"
+
 import { useApp } from "../../context/AppContext"
+import { supabase } from "../../lib/supabase"
+
+type ContributionSummary = {
+  response_status: string
+  response_type: string
+  potential_donor_count: number | null
+  responded_at: string
+}
 
 const cardStyle =
   "rounded-2xl border border-[#D8E3EA] bg-white shadow-[0_4px_18px_rgba(3,26,54,0.05)]"
 
 function NGOStatCard({
   label,
+
   value,
+
   sub,
+
   icon: Icon,
+
   tone = "red",
 }: {
   label: string
+
   value: string | number
+
   sub: string
+
   icon: typeof Users
+
   tone?: "red" | "amber" | "navy"
 }) {
   const tones = {
     red: "bg-[#FFF1F3] text-[#E51C3D]",
+
     amber: "bg-amber-50 text-amber-600",
+
     navy: "bg-[#EAF0F5] text-[#062847]",
   }
 
   return (
-    <article className={`${cardStyle} flex min-h-[122px] items-center gap-4 p-4 sm:p-5`}>
+    <article
+      className={`${cardStyle} flex min-h-[122px] items-center gap-4 p-4 sm:p-5`}
+    >
       <span
         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}
       >
@@ -59,9 +82,11 @@ function NGOStatCard({
 
 function SectionHeading({
   title,
+
   to,
 }: {
   title: string
+
   to: string
 }) {
   return (
@@ -78,39 +103,82 @@ function SectionHeading({
 }
 
 export default function NGODashboard() {
-  const { requests, donors, currentUser, requestFeedError, verifyRequest } = useApp()
-  const [actionError, setActionError] = useState<string | null>(null)
-  const pending = requests.filter((r) => r.status === "Verification Pending")
-  const active = requests.filter((request) =>
-    ["Verified", "Matching", "Donors Contacted", "Donor Confirmed", "Hospital Confirmation"].includes(
-      request.status,
-    ),
-  )
-  const coordinatedThisYear = requests.filter(
-    (request) =>
-      request.status !== "Verification Pending" &&
-      request.status !== "Cancelled" &&
-      new Date(request.createdAt).getFullYear() === new Date().getFullYear(),
-  ).length
-  const availDonors = donors.filter((d) => d.available).length
-  const handleVerify = async (requestId: string) => {
-    setActionError(null)
-    try {
-      await verifyRequest(requestId)
-    } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "Unable to verify this request.",
-      )
+  const {
+    requests,
+
+    donors,
+
+    currentUser,
+
+    requestFeedError,
+  } = useApp()
+
+  const [contributions, setContributions] = useState<ContributionSummary[]>([])
+  const [contributionError, setContributionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_ngo_request_contributions",
+        )
+        if (!active) return
+        if (error) {
+          setContributionError(error.message)
+        } else {
+          setContributionError(null)
+          setContributions((data ?? []) as ContributionSummary[])
+        }
+      } catch (error: unknown) {
+        if (!active) return
+        setContributionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load NGO contribution metrics.",
+        )
+      }
     }
-  }
+    void load()
+    const interval = window.setInterval(() => void load(), 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  const active = requests.filter(
+    (request) => !["Fulfilled", "Cancelled"].includes(request.status),
+  )
+
+  const coordinatedThisYear = contributions.filter(
+    (item) =>
+      item.response_type === "potential_donor" &&
+      new Date(item.responded_at).getFullYear() === new Date().getFullYear(),
+  ).length
+  const potentialDonorsIdentified = contributions.reduce(
+    (total, item) => total + (item.potential_donor_count ?? 0),
+    0,
+  )
+  const awaitingHospital = contributions.filter(
+    (item) => item.response_status === "Awaiting Hospital Coordination",
+  ).length
+
+  const availDonors = donors.filter((d) => d.available).length
 
   return (
     <DashboardLayout>
-      {(requestFeedError || actionError) && (
+      {requestFeedError && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+        >
+          Requests could not be loaded: {requestFeedError}
+        </p>
+      )}
+      {contributionError && (
         <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {requestFeedError
-            ? `Requests could not be loaded: ${requestFeedError}`
-            : actionError}
+          NGO contribution metrics could not be loaded: {contributionError}
         </p>
       )}
       <header className="ngo-welcome-card mb-8 overflow-hidden rounded-2xl shadow-[0_4px_18px_rgba(3,26,54,0.05)]">
@@ -123,21 +191,31 @@ export default function NGODashboard() {
               Welcome, {currentUser?.name}
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--text-secondary)">
-              Coordinate blood requests, verify donors, and manage your network.
+              Coordinate blood requests, connect donors, and manage your network.
             </p>
           </div>
           <div className="ngo-welcome-art" aria-hidden="true">
             <span className="ngo-art-orbit ngo-art-orbit-outer" />
             <span className="ngo-art-orbit ngo-art-orbit-inner" />
-            <span className="ngo-art-node ngo-art-node-left"><Users size={18} /></span>
-            <span className="ngo-art-node ngo-art-node-center"><HeartHandshake size={26} /></span>
-            <span className="ngo-art-node ngo-art-node-right"><Droplets size={17} /></span>
+            <span className="ngo-art-node ngo-art-node-left">
+              <Users size={18} />
+            </span>
+            <span className="ngo-art-node ngo-art-node-center">
+              <HeartHandshake size={26} />
+            </span>
+            <span className="ngo-art-node ngo-art-node-right">
+              <Droplets size={17} />
+            </span>
           </div>
         </div>
       </header>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+        >
           <NGOStatCard
             label="Donors in Network"
             value={donors.length}
@@ -145,29 +223,40 @@ export default function NGODashboard() {
             icon={Users}
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
           <NGOStatCard
-            label="Pending Verification"
-            value={pending.length}
-            sub="Need your review"
-            icon={FileCheck}
-            tone="amber"
+            label="Assigned Requests"
+            value={requests.length}
+            sub="Available for coordination"
+            icon={Droplets}
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
           <NGOStatCard
-            label="Active Coordination"
-            value={active.length}
-            sub="Requests in progress"
+            label="Potential Donors Identified"
+            value={potentialDonorsIdentified}
+            sub="NGO offers; not completed donations"
             icon={Zap}
             tone="navy"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
           <NGOStatCard
-            label="Requests Coordinated"
-            value={coordinatedThisYear}
-            sub="Assigned requests this year"
+            label="Awaiting Hospital"
+            value={awaitingHospital}
+            sub={`${coordinatedThisYear} potential-donor offers this year`}
             icon={BarChart3}
           />
         </motion.div>
@@ -176,20 +265,16 @@ export default function NGODashboard() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <section className="mb-7">
-            <SectionHeading title="Pending Verification" to="/ngo/verification" />
+            <SectionHeading title="Assigned Requests" to="/ngo/requests" />
             <div className="space-y-3">
-              {pending.length === 0 ? (
+              {active.length === 0 ? (
                 <div className={`${cardStyle} p-8 text-center`}>
-                  <CheckCircle
-                    size={28}
-                    className="mx-auto mb-3 text-emerald-500"
-                  />
                   <p className="text-sm text-[#617587]">
-                    All caught up — no pending verifications.
+                    No active requests are assigned to your organization.
                   </p>
                 </div>
               ) : (
-                pending.map((req, i) => (
+                active.slice(0, 4).map((req, i) => (
                   <motion.article
                     key={req.id}
                     initial={{ opacity: 0, x: -10 }}
@@ -221,12 +306,9 @@ export default function NGODashboard() {
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => void handleVerify(req.id)}
-                        className="whitespace-nowrap rounded-lg bg-[#E51C3D] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#C91532] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E51C3D]"
-                      >
-                        Verify Request
-                      </button>
+                      <span className="shrink-0 rounded-full bg-[#EAF0F5] px-2.5 py-1 text-xs text-[#617587]">
+                        {req.status}
+                      </span>
                     </div>
                   </motion.article>
                 ))
@@ -268,8 +350,15 @@ export default function NGODashboard() {
             <div className="space-y-2">
               {[
                 { label: "Manage Donors", to: "/ngo/donors", icon: Users },
+
                 { label: "Run Matching", to: "/ngo/matching", icon: Zap },
-                { label: "View Analytics", to: "/ngo/analytics", icon: BarChart3 },
+
+                {
+                  label: "View Analytics",
+                  to: "/ngo/analytics",
+                  icon: BarChart3,
+                },
+
                 { label: "Donor Capacity", to: "/ngo/capacity", icon: Users },
               ].map(({ label, to, icon: Icon }) => (
                 <Link
@@ -291,17 +380,27 @@ export default function NGODashboard() {
             </h3>
             <div className="space-y-3">
               {[
-                { label: "Available Now", count: availDonors, color: "bg-emerald-500" },
+                {
+                  label: "Available Now",
+                  count: availDonors,
+                  color: "bg-emerald-500",
+                },
+
                 {
                   label: "Temporarily Unavailable",
+
                   count: donors.filter(
                     (d) => d.status === "Temporarily Unavailable",
                   ).length,
+
                   color: "bg-amber-400",
                 },
+
                 {
                   label: "Inactive",
+
                   count: donors.filter((d) => d.status === "Inactive").length,
+
                   color: "bg-slate-300",
                 },
               ].map(({ label, count, color }) => (

@@ -67,6 +67,8 @@ create table if not exists public.donors (
   approximate_longitude double precision,
   verified boolean not null default false,
   city text,
+  area text,
+  emergency_contact text,
   radius integer,
   consent boolean not null default false,
   available boolean not null default true,
@@ -81,13 +83,27 @@ create table if not exists public.blood_requests (
   blood_group text not null check (blood_group in ('O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-')),
   units integer not null check (units > 0),
   urgency text not null check (urgency in ('CRITICAL', 'URGENT', 'NORMAL')),
-  status text not null default 'Verification Pending',
+  status text not null default 'Matching'
+    check (status in (
+      'Created',
+      'Verification Pending',
+      'Verified',
+      'Matching',
+      'Donors Contacted',
+      'Donor Confirmed',
+      'Hospital Confirmation',
+      'Fulfilled',
+      'Cancelled'
+    )),
   area text,
   department text,
   required_by timestamptz,
   latitude double precision,
   longitude double precision,
   location_address text,
+  hospital_contact_person text,
+  hospital_contact_phone text,
+  hospital_contact_email text,
   patient_age integer,
   notes text,
   verified_by uuid references public.ngos(id),
@@ -100,7 +116,14 @@ alter table public.blood_requests add column if not exists required_by timestamp
 alter table public.blood_requests add column if not exists latitude double precision;
 alter table public.blood_requests add column if not exists longitude double precision;
 alter table public.blood_requests add column if not exists location_address text;
+alter table public.blood_requests
+  add column if not exists hospital_contact_person text,
+  add column if not exists hospital_contact_phone text,
+  add column if not exists hospital_contact_email text;
 alter table public.blood_requests add column if not exists fulfilled_at timestamptz;
+alter table public.blood_requests
+  add column if not exists verified_by uuid references public.ngos(id),
+  add column if not exists matched_donor uuid references public.donors(id);
 
 create table if not exists public.patients (
   id uuid primary key default gen_random_uuid(),
@@ -148,6 +171,10 @@ create table if not exists public.messages (
   created_at timestamptz not null default now()
 );
 
+alter table public.messages
+  add column if not exists recipient_id uuid
+  references public.profiles(id) on delete cascade;
+
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -169,8 +196,31 @@ alter table public.hospitals add column if not exists longitude double precision
 alter table public.hospitals add column if not exists location_address text;
 alter table public.hospitals add column if not exists available_blood_groups text[] not null default '{}';
 alter table public.hospitals add column if not exists verified boolean not null default false;
+alter table public.hospitals add column if not exists blood_bank text;
 alter table public.hospitals add column if not exists registration_certificate text;
 alter table public.hospitals add column if not exists registration_certificate_url text;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'hospitals'
+      and column_name = 'blood_bank'
+      and data_type = 'boolean'
+  ) then
+    alter table public.hospitals
+      alter column blood_bank type text
+      using case
+        when blood_bank is true then 'Full blood bank on-site'
+        when blood_bank is false then 'No blood bank — require external supply'
+        else null
+      end;
+  end if;
+end;
+$$;
+
 alter table public.ngos add column if not exists user_id uuid;
 alter table public.ngos add column if not exists email text;
 alter table public.ngos add column if not exists phone text;
@@ -183,6 +233,9 @@ alter table public.ngos add column if not exists verified boolean not null defau
 alter table public.ngos add column if not exists registration_certificate text;
 alter table public.ngos add column if not exists registration_certificate_url text;
 alter table public.donors add column if not exists user_id uuid;
+alter table public.donors
+  add column if not exists area text,
+  add column if not exists emergency_contact text;
 alter table public.donors add column if not exists full_name text;
 alter table public.donors add column if not exists email text;
 alter table public.donors add column if not exists phone text;
@@ -194,8 +247,12 @@ alter table public.donors add column if not exists approximate_longitude double 
 alter table public.donors add column if not exists verified boolean not null default false;
 alter table public.donors add column if not exists city text;
 alter table public.donors add column if not exists radius integer;
+alter table public.donors add column if not exists radius_km integer;
 alter table public.donors add column if not exists consent boolean default false;
 alter table public.donors add column if not exists available boolean not null default true;
+alter table public.donors
+  add column if not exists last_donation_date date,
+  add column if not exists donations_count integer not null default 0;
 
 create unique index if not exists hospitals_user_id_key on public.hospitals(user_id);
 create unique index if not exists hospitals_registration_id_key on public.hospitals(registration_id) where registration_id is not null;
@@ -398,23 +455,48 @@ alter table public.donor_responses enable row level security;
 alter table public.messages enable row level security;
 alter table public.notifications enable row level security;
 
-create policy "Users can read their profile" on public.profiles for select using (auth.uid() = id);
-create policy "Users can create their profile" on public.profiles for insert with check (auth.uid() = id);
-create policy "Users can update their profile" on public.profiles for update using (auth.uid() = id);
+drop policy if exists "Users can read their profile" on public.profiles;
+create policy "Users can read their profile" on public.profiles for select to authenticated using (auth.uid() = id);
+drop policy if exists "Users can create their profile" on public.profiles;
+create policy "Users can create their profile" on public.profiles for insert to authenticated with check (auth.uid() = id);
+drop policy if exists "Users can update their profile" on public.profiles;
+create policy "Users can update their profile" on public.profiles for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
 drop policy if exists "Users can manage their hospital record" on public.hospitals;
 create policy "Users can manage their hospital record" on public.hospitals for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "Users can link their legacy hospital record" on public.hospitals;
+create policy "Users can link their legacy hospital record"
+  on public.hospitals for update to authenticated
+  using (
+    id = auth.uid()
+    and user_id is null
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'hospital'
+    )
+  )
+  with check (id = auth.uid() and user_id = auth.uid());
 drop policy if exists "Users can manage their NGO record" on public.ngos;
 create policy "Users can manage their NGO record" on public.ngos for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "Users can manage their donor record" on public.donors;
 create policy "Users can manage their donor record" on public.donors for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Authenticated users can read requests" on public.blood_requests for select to authenticated using (true);
+drop policy if exists "Authenticated users can read requests" on public.blood_requests;
+drop policy if exists "Hospitals can read their own requests" on public.blood_requests;
+create policy "Hospitals can read their own requests"
+  on public.blood_requests for select to authenticated using (
+    exists (
+      select 1 from public.hospitals h
+      where h.id = blood_requests.hospital_id and h.user_id = auth.uid()
+    )
+  );
+drop policy if exists "Hospitals can create requests" on public.blood_requests;
 create policy "Hospitals can create requests" on public.blood_requests for insert to authenticated with check (
   exists (
     select 1 from public.hospitals h
     where h.id = blood_requests.hospital_id and h.user_id = auth.uid()
   )
 );
+drop policy if exists "Hospitals can update their requests" on public.blood_requests;
 create policy "Hospitals can update their requests" on public.blood_requests for update to authenticated using (
   exists (
     select 1 from public.hospitals h
@@ -465,8 +547,11 @@ create policy "Hospitals can view responses to their requests" on public.donor_r
     where r.id = request_id and h.user_id = auth.uid()
   )
 );
+drop policy if exists "Participants can read messages" on public.messages;
 create policy "Participants can read messages" on public.messages for select to authenticated using (auth.uid() = sender_id or auth.uid() = recipient_id);
+drop policy if exists "Users can send messages" on public.messages;
 create policy "Users can send messages" on public.messages for insert to authenticated with check (auth.uid() = sender_id);
+drop policy if exists "Users can manage their notifications" on public.notifications;
 create policy "Users can manage their notifications" on public.notifications for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "NGOs can upload their registration documents" on storage.objects;
@@ -610,13 +695,15 @@ as $$
     select h.id, 'blood_bank', coalesce(h.blood_bank, h.hospital_name),
       h.latitude, h.longitude, h.available_blood_groups, true, h.city, h.verified
     from public.hospitals h
-    where h.blood_bank is not null and h.user_id <> auth.uid()
+    where h.blood_bank is not null
+      and h.blood_bank not like 'No blood bank%'
+      and h.user_id <> auth.uid()
       and h.latitude is not null and h.longitude is not null
     union all
-    select d.id, 'donor', 'Verified donor', d.approximate_latitude,
+    select d.id, 'donor', 'Donor', d.approximate_latitude,
       d.approximate_longitude, array[d.blood_group], d.available, d.city, d.verified
     from public.donors d
-    where d.available and d.verified and d.consent
+    where d.available and d.consent
       and d.approximate_latitude is not null and d.approximate_longitude is not null
     union all
     select n.id, 'ngo', n.organisation_name, n.latitude, n.longitude,
